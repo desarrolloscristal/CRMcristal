@@ -6,12 +6,12 @@ import { useState, useEffect, useCallback } from "react";
 // → Configuración del proyecto → Tus apps → SDK de Firebase
 // ============================================================
 const FIREBASE_CONFIG = {
-  apiKey:            "PEGAR_TU_apiKey_AQUI",
-  authDomain:        "PEGAR_TU_authDomain_AQUI",
-  projectId:         "PEGAR_TU_projectId_AQUI",
-  storageBucket:     "PEGAR_TU_storageBucket_AQUI",
-  messagingSenderId: "PEGAR_TU_messagingSenderId_AQUI",
-  appId:             "PEGAR_TU_appId_AQUI",
+  apiKey:            "AIzaSyCw_ic9RQLKHHl1IHvhuMTUY1H4wJQs648",
+  authDomain:        "cristalcrm-9bcb2.firebaseapp.com",
+  projectId:         "cristalcrm-9bcb2",
+  storageBucket:     "cristalcrm-9bcb2.firebasestorage.app",
+  messagingSenderId: "807569978293",
+  appId:             "1:807569978293:web:805c2bbad32638c40d1ffc",
 };
 
 // ---- Carga dinámica del SDK de Firebase (sin npm) ----
@@ -56,10 +56,10 @@ const loadFirebase = () => {
 // DATOS INICIALES
 // ============================================================
 const INITIAL_USERS = [
-  { id: "admin-1", username: "admin", password: "cristal2024", role: "admin", name: "Administrador", email: "admin@cristaldesarrollos.com", avatar: "A" },
-  { id: "vend-1", username: "lucas", password: "lucas123", role: "vendedor", name: "Lucas Martínez", email: "lucas@cristaldesarrollos.com", avatar: "L", zona: "Zona Sur" },
-  { id: "vend-2", username: "sofia", password: "sofia123", role: "vendedor", name: "Sofía Ramírez", email: "sofia@cristaldesarrollos.com", avatar: "S", zona: "Zona Norte" },
-  { id: "vend-3", username: "martin", password: "martin123", role: "vendedor", name: "Martín González", email: "martin@cristaldesarrollos.com", avatar: "M", zona: "Zona Oeste" },
+  { id: "admin-1", username: "admin", email: "admin@cristaldesarrollos.com", password: "cristal2024", role: "admin", name: "Administrador", avatar: "A", zona: "" },
+  { id: "vend-1", username: "lucas", email: "lucas@cristaldesarrollos.com", password: "lucas123", role: "vendedor", name: "Lucas Martínez", avatar: "L", zona: "Zona Sur" },
+  { id: "vend-2", username: "sofia", email: "sofia@cristaldesarrollos.com", password: "sofia123", role: "vendedor", name: "Sofía Ramírez", avatar: "S", zona: "Zona Norte" },
+  { id: "vend-3", username: "martin", email: "martin@cristaldesarrollos.com", password: "martin123", role: "vendedor", name: "Martín González", avatar: "M", zona: "Zona Oeste" },
 ];
 
 const PIPELINE_STAGES = [
@@ -629,19 +629,120 @@ const styles = `
 // LOGIN
 // ============================================================
 const Login = ({ onLogin }) => {
-  const [form, setForm] = useState({ username: "", password: "" });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const { db: firestore, auth: firebaseAuth } = await loadFirebase();
+        
+        // Setup initial users if needed
+        const usersSnapshot = await firestore.collection('users').get();
+        if (usersSnapshot.empty) {
+          console.log('Creating initial users...');
+          
+          for (const user of INITIAL_USERS) {
+            try {
+              // Create auth user
+              await firebaseAuth.createUserWithEmailAndPassword(user.email, user.password);
+              
+              // Create user document
+              await firestore.collection('users').doc(user.email).set({
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                name: user.name,
+                avatar: user.avatar,
+                zona: user.zona,
+                createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
+              });
+            } catch (err) {
+              if (err.code !== 'auth/email-already-in-use') {
+                console.error('Error creating user:', err);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Initialization error:', err);
+      } finally {
+        setInitializing(false);
+      }
+    };
+    
+    init();
+  }, []);
 
   const handleLogin = async () => {
-    if (!form.username || !form.password) { setError("Completá usuario y contraseña"); return; }
-    setLoading(true); setError("");
-    await new Promise(r => setTimeout(r, 700));
-    const user = INITIAL_USERS.find(u => u.username === form.username && u.password === form.password);
-    if (user) onLogin(user);
-    else setError("Usuario o contraseña incorrectos");
-    setLoading(false);
+    if (!form.email || !form.password) {
+      setError("Completá email y contraseña");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const { db: firestore, auth: firebaseAuth } = await loadFirebase();
+      
+      // Sign in with Firebase
+      const userCredential = await firebaseAuth.signInWithEmailAndPassword(form.email, form.password);
+      
+      // Get user data from Firestore
+      const userDoc = await firestore.collection('users').doc(form.email).get();
+      
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        onLogin({
+          uid: userCredential.user.uid,
+          email: form.email,
+          ...userData
+        });
+      } else {
+        setError("Usuario no encontrado en la base de datos");
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setError("Email o contraseña incorrectos");
+      } else if (err.code === 'auth/invalid-email') {
+        setError("Email inválido");
+      } else {
+        setError("Error al iniciar sesión. Intenta nuevamente.");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (initializing) {
+    return (
+      <div className="login-wrap">
+        <div className="login-bg" />
+        <div className="login-grid" />
+        <div className="login-card">
+          <div className="login-logo">
+            <div className="login-logo-ring">
+              <LogoIcon size={44} white />
+            </div>
+            <h1>Cristal <span>Desarrollos</span></h1>
+            <p>Sistema de Gestión Comercial · CRM</p>
+          </div>
+          <div className="login-divider" />
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
+            <p style={{ marginTop: 16, fontSize: 13, color: 'var(--text3)' }}>
+              Inicializando Firebase...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-wrap">
@@ -658,19 +759,36 @@ const Login = ({ onLogin }) => {
         <div className="login-divider" />
         {error && <div className="alert alert-err">{error}</div>}
         <div className="form-group">
-          <label className="form-label">Usuario</label>
-          <input className="form-input" placeholder="tu.usuario" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} onKeyDown={e => e.key === "Enter" && handleLogin()} />
+          <label className="form-label">Email</label>
+          <input 
+            className="form-input" 
+            type="email"
+            placeholder="tu@email.com" 
+            value={form.email} 
+            onChange={e => setForm({ ...form, email: e.target.value })} 
+            onKeyDown={e => e.key === "Enter" && handleLogin()} 
+          />
         </div>
         <div className="form-group" style={{ marginBottom: 22 }}>
           <label className="form-label">Contraseña</label>
-          <input className="form-input" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} onKeyDown={e => e.key === "Enter" && handleLogin()} />
+          <input 
+            className="form-input" 
+            type="password" 
+            placeholder="••••••••" 
+            value={form.password} 
+            onChange={e => setForm({ ...form, password: e.target.value })} 
+            onKeyDown={e => e.key === "Enter" && handleLogin()} 
+          />
         </div>
         <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading}>
           {loading ? <><span className="spinner" /> Verificando...</> : "Ingresar al Sistema →"}
         </button>
         <div style={{ marginTop: 20, padding: "11px 14px", background: "var(--bg3)", borderRadius: 8, fontSize: 12, color: "var(--text3)", lineHeight: 1.6, border: "1px solid var(--border)" }}>
           <span style={{ color: "var(--text2)", fontWeight: 600 }}>Accesos demo:</span><br />
-          admin/cristal2024 · lucas/lucas123 · sofia/sofia123 · martin/martin123
+          admin@cristaldesarrollos.com / cristal2024<br />
+          lucas@cristaldesarrollos.com / lucas123<br />
+          sofia@cristaldesarrollos.com / sofia123<br />
+          martin@cristaldesarrollos.com / martin123
         </div>
       </div>
     </div>
@@ -2554,26 +2672,74 @@ const DocumentacionView = ({ currentUser, hojas, setHojas }) => {
 export default function CristalCRM() {
   const [user, setUser] = useState(null);
   const [active, setActive] = useState(null);
-  const [ventas, setVentas] = useState([
-    { id: "v1", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-15", cliente: { nombre: "Roberto Pérez", dni: "30.123.456", telefono: "11-4567-8901", email: "roberto@mail.com", direccion: "Av. San Martín 456", ocupacion: "Comerciante" }, montoReserva: 5000, montoTotal: 120000, financiado: true, cuotas: 24, valorCuota: 4500, comision: 5000, estado: "aprobada", proyecto: "Torres del Sur I", zona: "Zona Sur", notas: "Cliente interesado en piso 8", comprobante: "reserva_perez.pdf" },
-    { id: "v2", vendedorId: "vend-2", vendedorNombre: "Sofía Ramírez", fecha: "2025-01-18", cliente: { nombre: "María González", dni: "25.987.654", telefono: "11-2345-6789", email: "maria@mail.com", direccion: "", ocupacion: "" }, montoReserva: 8000, montoTotal: 95000, financiado: false, cuotas: null, valorCuota: null, comision: 4000, estado: "pendiente", proyecto: "Barrio Jardín Norte", zona: "Zona Norte", notas: "", comprobante: null },
-  ]);
-  const [gastos, setGastos] = useState([
-    { id: "g1", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-16", categoria: "Meta Ads", descripcion: "Campaña enero zona sur — 3 conjuntos de anuncios", monto: 350, moneda: "USD", comprobante: "factura_meta.pdf", aiInterpretacion: null },
-    { id: "g2", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-17", categoria: "Combustible", descripcion: "Nafta — semana del 15 al 21", monto: 18500, moneda: "ARS", comprobante: null, aiInterpretacion: null },
-    { id: "g3", vendedorId: "vend-2", vendedorNombre: "Sofía Ramírez", fecha: "2025-01-19", categoria: "Google Ads", descripcion: "Campaña Google zona norte Q1", monto: 200, moneda: "USD", comprobante: "factura_google.pdf", aiInterpretacion: { monto_detectado: 200, moneda: "USD", descripcion_resumida: "Google Ads enero", categoria_sugerida: "Google Ads", valido: true } },
-  ]);
-  const [leads, setLeads] = useState([
-    { id: "l1", vendedorId: "vend-1", nombre: "Carlos Suárez", telefono: "11-9876-5432", email: "carlos@gmail.com", origen: "Meta Ads", presupuesto: "USD 80.000", zona: "Zona Sur", etapa: "contactado", notas: "Interesado en lote de 300m2", fecha: "2025-01-20", ultimoContacto: "2025-01-22" },
-    { id: "l2", vendedorId: "vend-2", nombre: "Ana López", telefono: "11-5432-1098", email: "ana@gmail.com", origen: "Google Ads", presupuesto: "USD 120.000", zona: "Zona Norte", etapa: "visita", notas: "Prefiere departamento 2 ambientes", fecha: "2025-01-19", ultimoContacto: "2025-01-21" },
-    { id: "l3", vendedorId: "vend-1", nombre: "Diego Fernández", telefono: "11-1234-5678", email: "diego@mail.com", origen: "WhatsApp", presupuesto: "USD 65.000", zona: "Zona Oeste", etapa: "nuevo", notas: "", fecha: "2025-01-23", ultimoContacto: "2025-01-23" },
-    { id: "l4", vendedorId: "vend-3", nombre: "Valentina Torres", telefono: "11-8765-4321", email: "valen@mail.com", origen: "General", presupuesto: "USD 200.000", zona: "Zona Norte", etapa: "propuesta", notas: "Quiere 2 unidades para inversión", fecha: "2025-01-10", ultimoContacto: "2025-01-20" },
-  ]);
-  const [apiKey, setApiKey] = useState("");
-  const [waConnected, setWaConnected] = useState(false);
-  const [hojas, setHojas] = useState([]);
+  
+  // LocalStorage persistence para datos
+  const [ventas, setVentas] = useState(() => {
+    const saved = localStorage.getItem('cristal_ventas');
+    return saved ? JSON.parse(saved) : [
+      { id: "v1", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-15", cliente: { nombre: "Roberto Pérez", dni: "30.123.456", telefono: "11-4567-8901", email: "roberto@mail.com", direccion: "Av. San Martín 456", ocupacion: "Comerciante" }, montoReserva: 5000, montoTotal: 120000, financiado: true, cuotas: 24, valorCuota: 4500, comision: 5000, estado: "aprobada", proyecto: "Torres del Sur I", zona: "Zona Sur", notas: "Cliente interesado en piso 8", comprobante: "reserva_perez.pdf" },
+      { id: "v2", vendedorId: "vend-2", vendedorNombre: "Sofía Ramírez", fecha: "2025-01-18", cliente: { nombre: "María González", dni: "25.987.654", telefono: "11-2345-6789", email: "maria@mail.com", direccion: "", ocupacion: "" }, montoReserva: 8000, montoTotal: 95000, financiado: false, cuotas: null, valorCuota: null, comision: 4000, estado: "pendiente", proyecto: "Barrio Jardín Norte", zona: "Zona Norte", notas: "", comprobante: null },
+    ];
+  });
+  
+  const [gastos, setGastos] = useState(() => {
+    const saved = localStorage.getItem('cristal_gastos');
+    return saved ? JSON.parse(saved) : [
+      { id: "g1", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-16", categoria: "Meta Ads", descripcion: "Campaña enero zona sur — 3 conjuntos de anuncios", monto: 350, moneda: "USD", comprobante: "factura_meta.pdf", aiInterpretacion: null },
+      { id: "g2", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-17", categoria: "Combustible", descripcion: "Nafta — semana del 15 al 21", monto: 18500, moneda: "ARS", comprobante: null, aiInterpretacion: null },
+      { id: "g3", vendedorId: "vend-2", vendedorNombre: "Sofía Ramírez", fecha: "2025-01-19", categoria: "Google Ads", descripcion: "Campaña Google zona norte Q1", monto: 200, moneda: "USD", comprobante: "factura_google.pdf", aiInterpretacion: { monto_detectado: 200, moneda: "USD", descripcion_resumida: "Google Ads enero", categoria_sugerida: "Google Ads", valido: true } },
+    ];
+  });
+  
+  const [leads, setLeads] = useState(() => {
+    const saved = localStorage.getItem('cristal_leads');
+    return saved ? JSON.parse(saved) : [
+      { id: "l1", vendedorId: "vend-1", nombre: "Carlos Suárez", telefono: "11-9876-5432", email: "carlos@gmail.com", origen: "Meta Ads", presupuesto: "USD 80.000", zona: "Zona Sur", etapa: "contactado", notas: "Interesado en lote de 300m2", fecha: "2025-01-20", ultimoContacto: "2025-01-22" },
+      { id: "l2", vendedorId: "vend-2", nombre: "Ana López", telefono: "11-5432-1098", email: "ana@gmail.com", origen: "Google Ads", presupuesto: "USD 120.000", zona: "Zona Norte", etapa: "visita", notas: "Prefiere departamento 2 ambientes", fecha: "2025-01-19", ultimoContacto: "2025-01-21" },
+      { id: "l3", vendedorId: "vend-1", nombre: "Diego Fernández", telefono: "11-1234-5678", email: "diego@mail.com", origen: "WhatsApp", presupuesto: "USD 65.000", zona: "Zona Oeste", etapa: "nuevo", notas: "", fecha: "2025-01-23", ultimoContacto: "2025-01-23" },
+      { id: "l4", vendedorId: "vend-3", nombre: "Valentina Torres", telefono: "11-8765-4321", email: "valen@mail.com", origen: "General", presupuesto: "USD 200.000", zona: "Zona Norte", etapa: "propuesta", notas: "Quiere 2 unidades para inversión", fecha: "2025-01-10", ultimoContacto: "2025-01-20" },
+    ];
+  });
+  
+  const [hojas, setHojas] = useState(() => {
+    const saved = localStorage.getItem('cristal_hojas');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [apiKey, setApiKey] = useState(() => {
+    return localStorage.getItem('cristal_apiKey') || "";
+  });
+  
+  const [waConnected, setWaConnected] = useState(() => {
+    return localStorage.getItem('cristal_waConnected') === 'true';
+  });
 
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Persistir cambios en localStorage
+  useEffect(() => {
+    localStorage.setItem('cristal_ventas', JSON.stringify(ventas));
+  }, [ventas]);
+
+  useEffect(() => {
+    localStorage.setItem('cristal_gastos', JSON.stringify(gastos));
+  }, [gastos]);
+
+  useEffect(() => {
+    localStorage.setItem('cristal_leads', JSON.stringify(leads));
+  }, [leads]);
+
+  useEffect(() => {
+    localStorage.setItem('cristal_hojas', JSON.stringify(hojas));
+  }, [hojas]);
+
+  useEffect(() => {
+    localStorage.setItem('cristal_apiKey', apiKey);
+  }, [apiKey]);
+
+  useEffect(() => {
+    localStorage.setItem('cristal_waConnected', waConnected.toString());
+  }, [waConnected]);
 
   useEffect(() => {
     if (user) setActive(user.role === "admin" ? "dashboard" : "resumen");
