@@ -25,11 +25,6 @@ const loadFirebase = () => {
   if (fbLoadPromise) return fbLoadPromise;
 
   fbLoadPromise = new Promise((resolve, reject) => {
-    const loadScript = (src) => new Promise((res, rej) => {
-      if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-      const s = document.createElement("script");
-      s.src = src; s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
     });
 
     Promise.all([
