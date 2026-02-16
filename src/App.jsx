@@ -25,11 +25,6 @@ const loadFirebase = () => {
   if (fbLoadPromise) return fbLoadPromise;
 
   fbLoadPromise = new Promise((resolve, reject) => {
-    // Chequear si las credenciales ya fueron configuradas
-    if (FIREBASE_CONFIG.apiKey === "PEGAR_TU_apiKey_AQUI") {
-      reject(new Error("NO_CONFIG"));
-      return;
-    }
     const loadScript = (src) => new Promise((res, rej) => {
       if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
       const s = document.createElement("script");
