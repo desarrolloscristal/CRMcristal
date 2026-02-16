@@ -25,8 +25,6 @@ const loadFirebase = () => {
   if (fbLoadPromise) return fbLoadPromise;
 
   fbLoadPromise = new Promise((resolve, reject) => {
-    });
-
     Promise.all([
       loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"),
       loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"),
