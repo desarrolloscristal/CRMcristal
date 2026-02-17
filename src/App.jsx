@@ -24,6 +24,13 @@ const loadFirebase = () => {
   if (fbLoaded) return Promise.resolve({ db, fbAuth });
   if (fbLoadPromise) return fbLoadPromise;
 
+  const loadScript = (src) => new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement("script");
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+
   fbLoadPromise = new Promise((resolve, reject) => {
     Promise.all([
       loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"),
@@ -39,17 +46,6 @@ const loadFirebase = () => {
   });
   return fbLoadPromise;
 };
-
-// ============================================================
-// DATOS INICIALES
-// ============================================================
-const INITIAL_USERS = [
-  { id: "admin-1", username: "admin", email: "admin@cristaldesarrollos.com", password: "cristal2024", role: "admin", name: "Administrador", avatar: "A", zona: "" },
-  { id: "vend-1", username: "lucas", email: "lucas@cristaldesarrollos.com", password: "lucas123", role: "vendedor", name: "Lucas Martínez", avatar: "L", zona: "Zona Sur" },
-  { id: "vend-2", username: "sofia", email: "sofia@cristaldesarrollos.com", password: "sofia123", role: "vendedor", name: "Sofía Ramírez", avatar: "S", zona: "Zona Norte" },
-  { id: "vend-3", username: "martin", email: "martin@cristaldesarrollos.com", password: "martin123", role: "vendedor", name: "Martín González", avatar: "M", zona: "Zona Oeste" },
-];
-
 const PIPELINE_STAGES = [
   { id: "nuevo", label: "Nuevo Lead", color: "#26945F" },
   { id: "contactado", label: "Contactado", color: "#1C8450" },
