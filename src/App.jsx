@@ -14,37 +14,33 @@ const FIREBASE_CONFIG = {
   appId:             "1:807569978293:web:805c2bbad32638c40d1ffc",
 };
 
-// ---- Carga dinámica del SDK de Firebase (sin npm) ----
-let db = null;
-let fbAuth = null;
-let fbLoaded = false;
-let fbLoadPromise = null;
+// ---- Firebase: carga dinámica ----
+let _fb = null;
 
-const loadScript = (src) => new Promise((res, rej) => {
-  if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-  const s = document.createElement("script");
-  s.src = src; s.onload = res; s.onerror = rej;
-  document.head.appendChild(s);
-});
+const loadFirebase = async () => {
+  if (_fb) return _fb;
 
-const loadFirebase = () => {
-  if (fbLoaded) return Promise.resolve({ db, fbAuth });
-  if (fbLoadPromise) return fbLoadPromise;
-
-  fbLoadPromise = new Promise((resolve, reject) => {
-    Promise.all([
-      loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"),
-      loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"),
-      loadScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"),
-    ]).then(() => {
-      if (!window.firebase.apps.length) window.firebase.initializeApp(FIREBASE_CONFIG);
-      db = window.firebase.firestore();
-      fbAuth = window.firebase.auth();
-      fbLoaded = true;
-      resolve({ db, fbAuth });
-    }).catch(reject);
+  const addScript = (src) => new Promise((ok, fail) => {
+    if (document.querySelector(`script[src="${src}"]`)) { ok(); return; }
+    const el = document.createElement("script");
+    el.src = src; el.onload = ok; el.onerror = fail;
+    document.head.appendChild(el);
   });
-  return fbLoadPromise;
+
+  await addScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js");
+  await addScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js");
+  await addScript("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js");
+
+  if (!window.firebase.apps.length) {
+    window.firebase.initializeApp(FIREBASE_CONFIG);
+  }
+
+  _fb = {
+    db: window.firebase.firestore(),
+    auth: window.firebase.auth(),
+  };
+
+  return _fb;
 };
 
 // ============================================================
@@ -632,82 +628,70 @@ const Login = ({ onLogin }) => {
   useEffect(() => {
     const init = async () => {
       try {
-        const { db: firestore, auth: firebaseAuth } = await loadFirebase();
-        
-        // Setup initial users if needed
+        // Esperar a que Firebase cargue completamente
+        const firebase = await loadFirebase();
+        const firestore = firebase.db;
+        const firebaseAuth = firebase.auth;
+
+        if (!firestore || !firebaseAuth) {
+          throw new Error("Firebase no cargó correctamente");
+        }
+
+        // Crear usuarios iniciales si no existen
         const usersSnapshot = await firestore.collection('users').get();
         if (usersSnapshot.empty) {
-          console.log('Creating initial users...');
-          
-          for (const user of INITIAL_USERS) {
+          for (const u of INITIAL_USERS) {
             try {
-              // Create auth user
-              await firebaseAuth.createUserWithEmailAndPassword(user.email, user.password);
-              
-              // Create user document
-              await firestore.collection('users').doc(user.email).set({
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                role: user.role,
-                name: user.name,
-                avatar: user.avatar,
-                zona: user.zona,
-                createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
-              });
-            } catch (err) {
-              if (err.code !== 'auth/email-already-in-use') {
-                console.error('Error creating user:', err);
-              }
+              await firebaseAuth.createUserWithEmailAndPassword(u.email, u.password);
+            } catch (e) {
+              // ya existe, ok
             }
+            await firestore.collection('users').doc(u.email).set({
+              id: u.id, username: u.username, email: u.email,
+              role: u.role, name: u.name, avatar: u.avatar, zona: u.zona,
+            });
           }
         }
       } catch (err) {
-        console.error('Initialization error:', err);
+        console.error('Init error:', err);
       } finally {
         setInitializing(false);
       }
     };
-    
     init();
   }, []);
 
   const handleLogin = async () => {
-    if (!form.email || !form.password) {
-      setError("Completá email y contraseña");
-      return;
-    }
-
+    if (!form.email || !form.password) { setError("Completá email y contraseña"); return; }
     setLoading(true);
     setError("");
-
     try {
-      const { db: firestore, auth: firebaseAuth } = await loadFirebase();
-      
-      // Sign in with Firebase
-      const userCredential = await firebaseAuth.signInWithEmailAndPassword(form.email, form.password);
-      
-      // Get user data from Firestore
+      const firebase = await loadFirebase();
+      const firestore = firebase.db;
+      const firebaseAuth = firebase.auth;
+
+      if (!firebaseAuth) throw new Error("Firebase Auth no disponible");
+
+      const cred = await firebaseAuth.signInWithEmailAndPassword(form.email, form.password);
       const userDoc = await firestore.collection('users').doc(form.email).get();
-      
+
       if (userDoc.exists) {
-        const userData = userDoc.data();
-        onLogin({
-          uid: userCredential.user.uid,
-          email: form.email,
-          ...userData
-        });
+        onLogin({ uid: cred.user.uid, email: form.email, ...userDoc.data() });
       } else {
-        setError("Usuario no encontrado en la base de datos");
+        // Fallback: buscar en INITIAL_USERS
+        const localUser = INITIAL_USERS.find(u => u.email === form.email);
+        if (localUser) {
+          onLogin({ uid: cred.user.uid, ...localUser });
+        } else {
+          setError("Usuario no encontrado");
+        }
       }
     } catch (err) {
       console.error('Login error:', err);
-      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
         setError("Email o contraseña incorrectos");
-      } else if (err.code === 'auth/invalid-email') {
-        setError("Email inválido");
       } else {
-        setError("Error al iniciar sesión. Intenta nuevamente.");
+        setError("Error: " + (err.message || "Intenta nuevamente"));
       }
     } finally {
       setLoading(false);
