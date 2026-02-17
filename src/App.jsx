@@ -2655,29 +2655,17 @@ export default function CristalCRM() {
   // LocalStorage persistence para datos
   const [ventas, setVentas] = useState(() => {
     const saved = localStorage.getItem('cristal_ventas');
-    return saved ? JSON.parse(saved) : [
-      { id: "v1", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-15", cliente: { nombre: "Roberto Pérez", dni: "30.123.456", telefono: "11-4567-8901", email: "roberto@mail.com", direccion: "Av. San Martín 456", ocupacion: "Comerciante" }, montoReserva: 5000, montoTotal: 120000, financiado: true, cuotas: 24, valorCuota: 4500, comision: 5000, estado: "aprobada", proyecto: "Torres del Sur I", zona: "Zona Sur", notas: "Cliente interesado en piso 8", comprobante: "reserva_perez.pdf" },
-      { id: "v2", vendedorId: "vend-2", vendedorNombre: "Sofía Ramírez", fecha: "2025-01-18", cliente: { nombre: "María González", dni: "25.987.654", telefono: "11-2345-6789", email: "maria@mail.com", direccion: "", ocupacion: "" }, montoReserva: 8000, montoTotal: 95000, financiado: false, cuotas: null, valorCuota: null, comision: 4000, estado: "pendiente", proyecto: "Barrio Jardín Norte", zona: "Zona Norte", notas: "", comprobante: null },
-    ];
+    return saved ? JSON.parse(saved) : [];
   });
   
   const [gastos, setGastos] = useState(() => {
     const saved = localStorage.getItem('cristal_gastos');
-    return saved ? JSON.parse(saved) : [
-      { id: "g1", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-16", categoria: "Meta Ads", descripcion: "Campaña enero zona sur — 3 conjuntos de anuncios", monto: 350, moneda: "USD", comprobante: "factura_meta.pdf", aiInterpretacion: null },
-      { id: "g2", vendedorId: "vend-1", vendedorNombre: "Lucas Martínez", fecha: "2025-01-17", categoria: "Combustible", descripcion: "Nafta — semana del 15 al 21", monto: 18500, moneda: "ARS", comprobante: null, aiInterpretacion: null },
-      { id: "g3", vendedorId: "vend-2", vendedorNombre: "Sofía Ramírez", fecha: "2025-01-19", categoria: "Google Ads", descripcion: "Campaña Google zona norte Q1", monto: 200, moneda: "USD", comprobante: "factura_google.pdf", aiInterpretacion: { monto_detectado: 200, moneda: "USD", descripcion_resumida: "Google Ads enero", categoria_sugerida: "Google Ads", valido: true } },
-    ];
+    return saved ? JSON.parse(saved) : [];
   });
   
   const [leads, setLeads] = useState(() => {
     const saved = localStorage.getItem('cristal_leads');
-    return saved ? JSON.parse(saved) : [
-      { id: "l1", vendedorId: "vend-1", nombre: "Carlos Suárez", telefono: "11-9876-5432", email: "carlos@gmail.com", origen: "Meta Ads", presupuesto: "USD 80.000", zona: "Zona Sur", etapa: "contactado", notas: "Interesado en lote de 300m2", fecha: "2025-01-20", ultimoContacto: "2025-01-22" },
-      { id: "l2", vendedorId: "vend-2", nombre: "Ana López", telefono: "11-5432-1098", email: "ana@gmail.com", origen: "Google Ads", presupuesto: "USD 120.000", zona: "Zona Norte", etapa: "visita", notas: "Prefiere departamento 2 ambientes", fecha: "2025-01-19", ultimoContacto: "2025-01-21" },
-      { id: "l3", vendedorId: "vend-1", nombre: "Diego Fernández", telefono: "11-1234-5678", email: "diego@mail.com", origen: "WhatsApp", presupuesto: "USD 65.000", zona: "Zona Oeste", etapa: "nuevo", notas: "", fecha: "2025-01-23", ultimoContacto: "2025-01-23" },
-      { id: "l4", vendedorId: "vend-3", nombre: "Valentina Torres", telefono: "11-8765-4321", email: "valen@mail.com", origen: "General", presupuesto: "USD 200.000", zona: "Zona Norte", etapa: "propuesta", notas: "Quiere 2 unidades para inversión", fecha: "2025-01-10", ultimoContacto: "2025-01-20" },
-    ];
+    return saved ? JSON.parse(saved) : [];
   });
   
   const [hojas, setHojas] = useState(() => {
