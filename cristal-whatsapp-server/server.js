@@ -183,12 +183,19 @@ async function startSession(vendedorId, socketClient) {
 async function restoreExistingSessions() {
   if (!fs.existsSync(SESSIONS_DIR)) return;
   const vendedores = fs.readdirSync(SESSIONS_DIR);
-  console.log(`Restaurando ${vendedores.length} sesión(es)...`);
+  console.log(`Revisando ${vendedores.length} carpeta(s) de sesiones...`);
   for (const vid of vendedores) {
     const sessionPath = path.join(SESSIONS_DIR, vid);
-    if (fs.statSync(sessionPath).isDirectory()) {
-      console.log(`  → Reconectando sesión: ${vid}`);
+    if (!fs.statSync(sessionPath).isDirectory()) continue;
+    // Solo restaurar si hay credenciales válidas (creds.json)
+    const credsPath = path.join(sessionPath, "creds.json");
+    if (fs.existsSync(credsPath)) {
+      console.log(`  → Restaurando sesión con credenciales: ${vid}`);
       await startSession(vid, null);
+    } else {
+      // Limpiar carpeta vacía/sin credenciales
+      console.log(`  → Sin credenciales, limpiando carpeta: ${vid}`);
+      fs.rmSync(sessionPath, { recursive: true, force: true });
     }
   }
 }
