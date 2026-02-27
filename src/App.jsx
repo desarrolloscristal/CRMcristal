@@ -1878,95 +1878,239 @@ const PipelineView = ({ leads, setLeads, currentUser }) => {
 // ============================================================
 // WHATSAPP VIEW
 // ============================================================
-const WAView = ({ connected, setConnected, leads, setLeads, currentUser }) => {
-  const [loading, setLoading] = useState(false);
-  const [active, setActive] = useState(null);
+// URL del servidor WhatsApp en Railway
+const WA_SERVER_URL = "https://crmcristal-production.up.railway.app";
+
+const WAView = ({ currentUser, setLeads }) => {
+  const [status, setStatus] = useState("disconnected");
+  const [qrImg, setQrImg] = useState(null);
+  const [phone, setPhone] = useState(null);
+  const [messages, setMessages] = useState({});
+  const [activeChat, setActiveChat] = useState(null);
   const [reply, setReply] = useState("");
-  const msgs = [
-    { id: 1, name: "Carlos Suárez", phone: "+5491187654321", text: "Hola! Vi el anuncio de los lotes en Zona Sur, ¿me pueden dar info?", time: "09:45", unread: 2 },
-    { id: 2, name: "María Consulta", phone: "+5491112345678", text: "Buenos días, ¿tienen financiación? Busco propiedad en zona norte", time: "11:20", unread: 1 },
-    { id: 3, name: "Diego Fernández", phone: "+5491198765432", text: "¿Cuál es el precio del lote de 300m2?", time: "13:05", unread: 0 },
-  ];
-  const connect = async () => {
-    setLoading(true);
-    await new Promise(r => setTimeout(r, 2500));
-    setLoading(false); setConnected(true);
+  const [socket, setSocket] = useState(null);
+  const [error, setError] = useState("");
+
+  const vendedorId = currentUser.id;
+
+  useEffect(() => {
+    let sock = null;
+    const connectSocket = async () => {
+      const addScript = (src) => new Promise((ok, fail) => {
+        if (document.querySelector(`script[src="${src}"]`)) { ok(); return; }
+        const el = document.createElement("script");
+        el.src = src; el.onload = ok; el.onerror = fail;
+        document.head.appendChild(el);
+      });
+      try {
+        await addScript(`${WA_SERVER_URL}/socket.io/socket.io.js`);
+        sock = window.io(WA_SERVER_URL, { transports: ["websocket"], withCredentials: true });
+        sock.on("connect", () => { sock.emit("wa:join", { vendedorId }); });
+        sock.on("wa:status", ({ status: s, phone: p }) => {
+          setStatus(s);
+          if (p) setPhone(p);
+          if (s === "connected") setQrImg(null);
+        });
+        sock.on("wa:qr", ({ qr }) => { setQrImg(qr); setStatus("qr"); });
+        sock.on("wa:message", (msg) => {
+          setMessages(prev => {
+            const existing = prev[msg.jid] || [];
+            return { ...prev, [msg.jid]: [...existing, msg] };
+          });
+        });
+        sock.on("wa:sent", ({ jid, text }) => {
+          const msg = { id: Date.now().toString(), from: "me", name: "Yo", text, timestamp: new Date().toISOString(), jid, fromMe: true };
+          setMessages(prev => ({ ...prev, [jid]: [...(prev[jid] || []), msg] }));
+        });
+        sock.on("wa:error", ({ message: m }) => setError(m));
+        sock.on("disconnect", () => setStatus("disconnected"));
+        setSocket(sock);
+      } catch (e) {
+        setError("No se pudo conectar al servidor WhatsApp.");
+      }
+    };
+    connectSocket();
+    return () => { if (sock) sock.disconnect(); };
+  }, [vendedorId]);
+
+  const handleConnect = () => {
+    if (!socket) return;
+    setStatus("connecting"); setQrImg(null); setError("");
+    socket.emit("wa:connect", { vendedorId });
   };
+
+  const handleDisconnect = () => {
+    if (!socket) return;
+    socket.emit("wa:disconnect", { vendedorId });
+    setStatus("disconnected"); setPhone(null); setQrImg(null);
+    setMessages({}); setActiveChat(null);
+  };
+
+  const handleSend = () => {
+    if (!reply.trim() || !activeChat || !socket) return;
+    socket.emit("wa:send", { vendedorId, jid: activeChat, text: reply.trim() });
+    setReply("");
+  };
+
+  const handleAgregarPipeline = (jid, name, lastText, phone) => {
+    setLeads(prev => [{
+      id: uid(), vendedorId: currentUser.id, nombre: name,
+      telefono: phone, email: "", origen: "WhatsApp",
+      presupuesto: "", zona: "", etapa: "nuevo",
+      notas: lastText, fecha: today(), ultimoContacto: today(),
+    }, ...prev]);
+    alert("✅ Lead agregado al Pipeline");
+  };
+
+  const chats = Object.entries(messages).map(([jid, msgs]) => {
+    const last = msgs[msgs.length - 1];
+    const unread = msgs.filter(m => !m.fromMe).length;
+    return { jid, name: last.name, lastMsg: last.text, time: last.timestamp, unread, phone: jid.replace("@s.whatsapp.net", "") };
+  });
+
+  const statusInfo = {
+    disconnected: { text: "Desconectado", color: "var(--text4)" },
+    connecting:   { text: "Conectando...", color: "var(--yellow)" },
+    qr:           { text: "Esperando escaneo...", color: "var(--yellow)" },
+    connected:    { text: `Conectado · +${phone}`, color: "var(--verde-claro)" },
+    reconnecting: { text: "Reconectando...", color: "var(--yellow)" },
+  }[status] || { text: status, color: "var(--text3)" };
+
   return (
     <div>
       <div className="ph">
-        <div className="ph-title">WhatsApp — Leads de Pauta</div>
-        {connected && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div className="wa-dot on" /><span style={{ fontSize: 13, color: "var(--verde-claro)" }}>Conectado</span></div>}
+        <div>
+          <div className="ph-title">WhatsApp</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: statusInfo.color,
+              boxShadow: status === "connected" ? "0 0 8px var(--verde-claro)" : "none",
+              animation: status === "connected" ? "glowPulse 1.8s infinite" : "none" }} />
+            <span style={{ fontSize: 12, color: statusInfo.color }}>{statusInfo.text}</span>
+          </div>
+        </div>
+        {status === "connected" && (
+          <button className="btn btn-danger btn-sm" onClick={handleDisconnect}>Desconectar</button>
+        )}
       </div>
-      {!connected ? (
+
+      {error && <div className="alert alert-err" style={{ marginBottom: 16 }}>⚠️ {error}</div>}
+
+      {/* DESCONECTADO */}
+      {status === "disconnected" && (
         <div className="card wa-card">
-          <div style={{ fontSize: 32, marginBottom: 10 }}>💬</div>
-          <h3 style={{ fontFamily: "Outfit", marginBottom: 8 }}>Conectar WhatsApp</h3>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>💬</div>
+          <h3 style={{ fontFamily: "Outfit", marginBottom: 8 }}>Conectar tu WhatsApp</h3>
           <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 20, lineHeight: 1.6 }}>
-            Recibí los leads de tus campañas de Meta Ads y Google Ads directamente en el CRM. Escaneá el código QR con tu teléfono para conectar.
+            Conectá tu WhatsApp personal para recibir y responder mensajes directamente desde el CRM.<br />
+            <span style={{ color: "var(--text3)", fontSize: 12 }}>⚠️ Integración no oficial (Baileys). Solo para uso interno.</span>
           </p>
-          <div className="wa-qr">
-            {loading ? (
+          <button className="btn btn-primary btn-full" onClick={handleConnect}>🔗 Generar QR para conectar</button>
+        </div>
+      )}
+
+      {/* CONECTANDO / QR */}
+      {(status === "connecting" || status === "qr") && (
+        <div className="card wa-card">
+          <h3 style={{ fontFamily: "Outfit", marginBottom: 8 }}>Escanear con tu teléfono</h3>
+          <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 16, lineHeight: 1.7 }}>
+            1. Abrí WhatsApp en tu teléfono<br />
+            2. Tocá los 3 puntos → <strong>Dispositivos vinculados</strong><br />
+            3. Tocá <strong>Vincular un dispositivo</strong><br />
+            4. Escaneá este código QR
+          </p>
+          <div className="wa-qr" style={{ width: 210, height: 210, margin: "0 auto 16px" }}>
+            {qrImg ? (
+              <img src={qrImg} alt="QR WhatsApp" style={{ width: "100%", height: "100%", borderRadius: 8 }} />
+            ) : (
               <div style={{ textAlign: "center" }}>
                 <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3, color: "var(--verde-claro)" }} />
                 <div style={{ marginTop: 10, fontSize: 12, color: "var(--text3)" }}>Generando QR...</div>
               </div>
-            ) : (
-              <svg viewBox="0 0 100 100" width="140" height="140" style={{ opacity: 0.6 }}>
-                {/* QR simulado */}
-                {[[0,0],[0,1],[0,2],[1,0],[2,0],[2,1],[2,2],[1,2]].map(([r,c],i)=><rect key={i} x={c*12+2} y={r*12+2} width="10" height="10" fill="var(--verde-claro)" rx="1"/>)}
-                {[[0,7],[0,8],[0,9],[1,7],[2,7],[2,8],[2,9],[1,9]].map(([r,c],i)=><rect key={"b"+i} x={c*12-20} y={r*12+2} width="10" height="10" fill="var(--verde-claro)" rx="1"/>)}
-                {[[7,0],[7,1],[7,2],[8,0],[9,0],[9,1],[9,2],[8,2]].map(([r,c],i)=><rect key={"c"+i} x={c*12+2} y={r*12-20} width="10" height="10" fill="var(--verde-claro)" rx="1"/>)}
-                {[4,5,6].map(v=>[3,5,7,4,6].map((h,i)=><rect key={`d${v}${i}`} x={h*11+1} y={v*11+1} width="8" height="8" fill="var(--text3)" rx="0.5" opacity={Math.random()>0.4?"0.7":"0"}/>))}
-              </svg>
             )}
           </div>
-          <button className="btn btn-primary btn-full" onClick={connect} disabled={loading} style={{ marginBottom: 12 }}>
-            {loading ? "Generando código QR..." : "🔗 Conectar WhatsApp"}
-          </button>
-          <div style={{ fontSize: 12, color: "var(--text3)", padding: "10px", background: "var(--bg3)", borderRadius: 8, border: "1px solid var(--border)" }}>
-            ⚠️ Integración no oficial (Baileys/whatsapp-web.js). Solo para recibir y responder leads de pauta. Opcional.
-          </div>
+          {qrImg && (
+            <button className="btn btn-ghost btn-full" onClick={handleConnect}>🔄 Regenerar QR</button>
+          )}
         </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 14, height: "72vh" }}>
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      )}
+
+      {/* RECONECTANDO */}
+      {status === "reconnecting" && (
+        <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
+          <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3, color: "var(--verde-claro)" }} />
+          <p style={{ marginTop: 16, color: "var(--text2)" }}>Reconectando WhatsApp...</p>
+        </div>
+      )}
+
+      {/* CHAT */}
+      {status === "connected" && (
+        <div style={{ display: "grid", gridTemplateColumns: "290px 1fr", gap: 14, height: "72vh" }}>
+          {/* Lista chats */}
+          <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", fontWeight: 700, fontSize: 13, fontFamily: "Outfit", color: "var(--verde-claro)" }}>
-              💬 Chats ({msgs.length})
+              💬 Chats ({chats.length})
             </div>
-            {msgs.map(m => (
-              <div key={m.id} style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", cursor: "pointer", background: active?.id === m.id ? "var(--verde-suave)" : "transparent", transition: "background 0.15s" }} onClick={() => setActive(m)}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                  <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>{m.name}</span>
-                  <span style={{ fontSize: 11, color: "var(--text3)" }}>{m.time}</span>
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {chats.length === 0 ? (
+                <div style={{ padding: "30px 16px", textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>
+                  Esperando mensajes...
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text3)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.text}</span>
-                  {m.unread > 0 && <span className="badge b-verde" style={{ flexShrink: 0 }}>{m.unread}</span>}
-                </div>
-                <button className="btn btn-sm btn-ghost" style={{ marginTop: 6, fontSize: 11 }} onClick={e => {
-                  e.stopPropagation();
-                  setLeads(prev => [{ id: uid(), vendedorId: currentUser.id, nombre: m.name, telefono: m.phone, email: "", origen: "WhatsApp", presupuesto: "", zona: "", etapa: "nuevo", notas: m.text, fecha: today(), ultimoContacto: today() }, ...prev]);
-                  alert("✅ Lead agregado al Pipeline");
-                }}>+ Agregar al Pipeline</button>
-              </div>
-            ))}
-          </div>
-          <div className="card" style={{ padding: 0, display: "flex", flexDirection: "column" }}>
-            {active ? (
-              <>
-                <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontWeight: 700, fontFamily: "Outfit" }}>
-                  {active.name} <span style={{ fontSize: 12, color: "var(--text3)", fontWeight: 400 }}>— {active.phone}</span>
-                </div>
-                <div style={{ flex: 1, padding: 16, overflowY: "auto" }}>
-                  <div style={{ maxWidth: "80%", background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "4px 12px 12px 12px", padding: "10px 14px", fontSize: 13 }}>
-                    {active.text}
-                    <div style={{ fontSize: 10, color: "var(--text3)", marginTop: 4 }}>{active.time}</div>
+              ) : chats.map(c => (
+                <div key={c.jid} style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", cursor: "pointer",
+                  background: activeChat === c.jid ? "var(--verde-suave)" : "transparent", transition: "background 0.15s" }}
+                  onClick={() => setActiveChat(c.jid)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>{c.name}</span>
+                    <span style={{ fontSize: 10, color: "var(--text3)" }}>
+                      {new Date(c.time).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text3)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastMsg}</span>
+                    {c.unread > 0 && <span className="badge b-verde" style={{ flexShrink: 0 }}>{c.unread}</span>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                    <span style={{ fontSize: 10, color: "var(--text4)" }}>+{c.phone}</span>
+                    <button className="btn btn-sm btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }}
+                      onClick={e => { e.stopPropagation(); handleAgregarPipeline(c.jid, c.name, c.lastMsg, c.phone); }}>
+                      + Pipeline
+                    </button>
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Ventana chat */}
+          <div className="card" style={{ padding: 0, display: "flex", flexDirection: "column" }}>
+            {activeChat ? (
+              <>
+                <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontWeight: 700, fontFamily: "Outfit", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>{chats.find(c => c.jid === activeChat)?.name}</span>
+                  <span style={{ fontSize: 11, color: "var(--text3)", fontWeight: 400 }}>+{activeChat.replace("@s.whatsapp.net", "")}</span>
+                </div>
+                <div style={{ flex: 1, padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {(messages[activeChat] || []).map((m, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: m.fromMe ? "flex-end" : "flex-start" }}>
+                      <div style={{ maxWidth: "75%", padding: "9px 13px",
+                        borderRadius: m.fromMe ? "12px 4px 12px 12px" : "4px 12px 12px 12px",
+                        background: m.fromMe ? "var(--verde-principal)" : "var(--bg3)",
+                        border: `1px solid ${m.fromMe ? "transparent" : "var(--border)"}`,
+                        fontSize: 13, color: "var(--text)" }}>
+                        <div>{m.text}</div>
+                        <div style={{ fontSize: 10, color: m.fromMe ? "rgba(255,255,255,0.6)" : "var(--text4)", marginTop: 4, textAlign: "right" }}>
+                          {new Date(m.timestamp).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
                 <div style={{ padding: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
-                  <input className="form-input" placeholder="Escribir respuesta..." value={reply} onChange={e => setReply(e.target.value)} onKeyDown={e => e.key === "Enter" && setReply("")} />
-                  <button className="btn btn-primary" onClick={() => setReply("")}>Enviar</button>
+                  <input className="form-input" placeholder="Escribir mensaje..."
+                    value={reply} onChange={e => setReply(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleSend()} />
+                  <button className="btn btn-primary" onClick={handleSend} disabled={!reply.trim()}>Enviar</button>
                 </div>
               </>
             ) : (
@@ -2945,7 +3089,7 @@ export default function CristalCRM() {
       case "resumen": return <ResumenView ventas={ventas} gastos={gastos} leads={leads} user={user} setVentas={setVentas} />;
       case "mis-ventas": return <VentasView ventas={ventas} setVentas={setVentas} currentUser={user} />;
       case "mis-gastos": return <GastosView gastos={gastos} setGastos={setGastos} currentUser={user} apiKey={apiKey} />;
-      case "whatsapp": return <WAView connected={waConnected} setConnected={setWaConnected} leads={leads} setLeads={setLeads} currentUser={user} />;
+      case "whatsapp": return <WAView currentUser={user} setLeads={setLeads} />;
       case "documentacion": return <DocumentacionView currentUser={user} hojas={hojas} setHojas={setHojas} />;
       default: return null;
     }
