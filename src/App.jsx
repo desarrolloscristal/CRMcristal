@@ -1978,18 +1978,7 @@ const PipelineView = ({ leads, setLeads, currentUser }) => {
     </div>
   );
 };
-                        border: `1.5px solid ${isCurrent ? s.color : "var(--border)"}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 11, fontWeight: 700, color: isCurrent ? "#fff" : "var(--text3)",
-                      }}>{idx + 1}</div>
-                      {/* Dot + nombre */}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: isCurrent ? 700 : 500, color: "var(--text)", display: "flex", alignItems: "center", gap: 7 }}>
-                          <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.color }} />
-                          {s.label}
-                        </div>
-                      </div>
-                      {isCurrent
+
 // ============================================================
 // WHATSAPP VIEW
 // ============================================================
