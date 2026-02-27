@@ -8,6 +8,8 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  delay,
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const path = require("path");
@@ -77,13 +79,20 @@ async function startSession(vendedorId, socketClient, retryCount = 0) {
     version,
     logger,
     printQRInTerminal: false,
-    auth: state,
-    browser: ["Cristal CRM", "Chrome", "1.0.0"],
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
     generateHighQualityLinkPreview: false,
     syncFullHistory: false,
     markOnlineOnConnect: false,
     getMessage: async () => undefined,
-    connectTimeoutMs: 20000,
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000,
+    retryRequestDelayMs: 2000,
+    qrTimeout: 60000,
   });
 
   sessions[vendedorId].sock = sock;
