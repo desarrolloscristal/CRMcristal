@@ -1907,7 +1907,8 @@ const WAView = ({ currentUser, setLeads }) => {
         sock = window.io(WA_SERVER_URL, { transports: ["websocket"], withCredentials: true });
         sock.on("connect", () => { sock.emit("wa:join", { vendedorId }); });
         sock.on("wa:status", ({ status: s, phone: p }) => {
-          setStatus(s);
+          // Si el servidor dice reconnecting pero nosotros nunca conectamos, mostrar disconnected
+          setStatus(s === "reconnecting" ? "disconnected" : s);
           if (p) setPhone(p);
           if (s === "connected") setQrImg(null);
         });
@@ -2986,9 +2987,15 @@ const DocumentacionView = ({ currentUser, hojas, setHojas }) => {
 // APP PRINCIPAL
 // ============================================================
 export default function CristalCRM() {
-  const [user, setUser] = useState(null);
+  // Persistir sesión del usuario en localStorage para que no se cierre al recargar
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cristal_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [active, setActive] = useState(null);
-  const [users, setUsers] = useState([]); // usuarios dinámicos desde Firestore
+  const [users, setUsers] = useState([]);
   
   // LocalStorage persistence para datos
   const [ventas, setVentas] = useState(() => {
@@ -3029,6 +3036,20 @@ export default function CristalCRM() {
   useEffect(() => { localStorage.setItem('cristal_apiKey', apiKey); }, [apiKey]);
   useEffect(() => { localStorage.setItem('cristal_waConnected', waConnected.toString()); }, [waConnected]);
 
+  // Guardar sesión del usuario al hacer login
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('cristal_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('cristal_user');
+    }
+  }, [user]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('cristal_user');
+    setUser(null);
+  };
+
   // Cargar todos los usuarios desde Firestore cuando el admin inicia sesión
   useEffect(() => {
     if (!user || user.role !== "admin") return;
@@ -3064,7 +3085,7 @@ export default function CristalCRM() {
 
   // Si el vendedor está pendiente o inactivo, mostrar pantalla de espera
   if (user.role === "vendedor" && user.status !== "activo") {
-    return <><style>{styles}</style><CuentaPendiente user={user} onLogout={() => setUser(null)} /></>;
+    return <><style>{styles}</style><CuentaPendiente user={user} onLogout={handleLogout} /></>;
   }
 
   const pendientes = ventas.filter(v => v.estado === "pendiente").length;
@@ -3132,7 +3153,7 @@ export default function CristalCRM() {
           user={user}
           active={active}
           setActive={handleNavMobile}
-          onLogout={() => setUser(null)}
+          onLogout={handleLogout}
           pendientes={user.role === "admin" ? pendientes : 0}
           mobileOpen={menuOpen}
         />
