@@ -47,7 +47,9 @@ const logger = pino({ level: "silent" });
 // ════════════════════════════════════════════════════════════
 // FUNCIÓN PRINCIPAL — crear/reconectar una sesión WhatsApp
 // ════════════════════════════════════════════════════════════
-async function startSession(vendedorId, socketClient) {
+async function startSession(vendedorId, socketClient, retryCount = 0) {
+  const MAX_RETRIES = 3;
+
   // Si ya hay una sesión activa, no crear otra
   if (sessions[vendedorId]?.status === "connected") {
     socketClient?.emit("wa:status", {
@@ -58,7 +60,12 @@ async function startSession(vendedorId, socketClient) {
     return;
   }
 
-  sessions[vendedorId] = { status: "connecting", qr: null, phone: null, sock: null };
+  // Si ya hay una sesión reconectando, no duplicar
+  if (sessions[vendedorId]?.status === "reconnecting" && retryCount === 0) {
+    return;
+  }
+
+  sessions[vendedorId] = { status: "connecting", qr: null, phone: null, sock: null, retryCount };
 
   const sessionPath = path.join(SESSIONS_DIR, vendedorId);
   if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
@@ -76,6 +83,7 @@ async function startSession(vendedorId, socketClient) {
     syncFullHistory: false,
     markOnlineOnConnect: false,
     getMessage: async () => undefined,
+    connectTimeoutMs: 20000,
   });
 
   sessions[vendedorId].sock = sock;
@@ -94,8 +102,8 @@ async function startSession(vendedorId, socketClient) {
         });
         sessions[vendedorId].qr = qrBase64;
         sessions[vendedorId].status = "qr";
+        sessions[vendedorId].retryCount = 0; // reset al ver QR
 
-        // Emitir a todos los clientes de este vendedor
         io.to(`vendor:${vendedorId}`).emit("wa:qr", { vendedorId, qr: qrBase64 });
         io.to(`vendor:${vendedorId}`).emit("wa:status", { vendedorId, status: "qr" });
         console.log(`[${vendedorId}] QR generado`);
@@ -110,6 +118,7 @@ async function startSession(vendedorId, socketClient) {
       sessions[vendedorId].status = "connected";
       sessions[vendedorId].phone = phone;
       sessions[vendedorId].qr = null;
+      sessions[vendedorId].retryCount = 0;
 
       io.to(`vendor:${vendedorId}`).emit("wa:status", {
         vendedorId,
@@ -122,20 +131,32 @@ async function startSession(vendedorId, socketClient) {
     // Desconectado
     if (connection === "close") {
       const code = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
+      const isLoggedOut = code === DisconnectReason.loggedOut;
+      const currentRetry = sessions[vendedorId]?.retryCount || 0;
 
-      console.log(`[${vendedorId}] Desconectado (código ${code}), reconectar: ${shouldReconnect}`);
+      console.log(`[${vendedorId}] Desconectado (código ${code}), intento ${currentRetry}/${MAX_RETRIES}`);
 
-      if (shouldReconnect) {
-        sessions[vendedorId].status = "reconnecting";
-        io.to(`vendor:${vendedorId}`).emit("wa:status", { vendedorId, status: "reconnecting" });
-        setTimeout(() => startSession(vendedorId, null), 3000);
-      } else {
-        // Sesión cerrada (logout) — limpiar credenciales
-        sessions[vendedorId].status = "disconnected";
+      if (isLoggedOut) {
+        // Sesión cerrada — limpiar
+        sessions[vendedorId] = { status: "disconnected", qr: null, phone: null, sock: null, retryCount: 0 };
         io.to(`vendor:${vendedorId}`).emit("wa:status", { vendedorId, status: "disconnected" });
         fs.rmSync(path.join(SESSIONS_DIR, vendedorId), { recursive: true, force: true });
         delete sessions[vendedorId];
+      } else if (currentRetry < MAX_RETRIES && code !== undefined) {
+        // Reconectar solo si hay un código de error real y quedan reintentos
+        sessions[vendedorId].status = "reconnecting";
+        io.to(`vendor:${vendedorId}`).emit("wa:status", { vendedorId, status: "reconnecting" });
+        setTimeout(() => startSession(vendedorId, null, currentRetry + 1), 4000);
+      } else {
+        // Demasiados reintentos o código undefined — parar y mostrar desconectado
+        console.log(`[${vendedorId}] Máximo de reintentos alcanzado o error indefinido — deteniendo.`);
+        sessions[vendedorId] = { status: "disconnected", qr: null, phone: null, sock: null, retryCount: 0 };
+        io.to(`vendor:${vendedorId}`).emit("wa:status", { vendedorId, status: "disconnected" });
+        // Limpiar creds si no funcionaron
+        const credsPath = path.join(SESSIONS_DIR, vendedorId, "creds.json");
+        if (fs.existsSync(credsPath)) {
+          fs.rmSync(path.join(SESSIONS_DIR, vendedorId), { recursive: true, force: true });
+        }
       }
     }
   });
