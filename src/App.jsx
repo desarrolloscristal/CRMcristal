@@ -44,14 +44,12 @@ const loadFirebase = async () => {
 };
 
 // ============================================================
-// DATOS INICIALES
+// ADMIN EMAIL — el único usuario que se registra manualmente
+// en Firebase Auth y queda como admin en Firestore.
+// Los vendedores se registran solos pero quedan "pendiente"
+// hasta que el admin los habilite desde el panel.
 // ============================================================
-const INITIAL_USERS = [
-  { id: "admin-1", username: "admin", email: "admin@cristaldesarrollos.com", password: "cristal2024", role: "admin", name: "Administrador", avatar: "A", zona: "" },
-  { id: "vend-1", username: "lucas", email: "lucas@cristaldesarrollos.com", password: "lucas123", role: "vendedor", name: "Lucas Martínez", avatar: "L", zona: "Zona Sur" },
-  { id: "vend-2", username: "sofia", email: "sofia@cristaldesarrollos.com", password: "sofia123", role: "vendedor", name: "Sofía Ramírez", avatar: "S", zona: "Zona Norte" },
-  { id: "vend-3", username: "martin", email: "martin@cristaldesarrollos.com", password: "martin123", role: "vendedor", name: "Martín González", avatar: "M", zona: "Zona Oeste" },
-];
+const ADMIN_EMAIL = "admin@cristaldesarrollos.com";
 
 const PIPELINE_STAGES = [
   { id: "nuevo", label: "Nuevo Lead", color: "#26945F" },
@@ -617,49 +615,53 @@ const styles = `
 `;
 
 // ============================================================
-// LOGIN
+// PANTALLA: CUENTA PENDIENTE DE APROBACIÓN
+// ============================================================
+const CuentaPendiente = ({ user, onLogout }) => (
+  <div className="login-wrap">
+    <div className="login-bg" />
+    <div className="login-grid" />
+    <div className="login-card" style={{ maxWidth: 460 }}>
+      <div className="login-logo">
+        <div className="login-logo-ring">
+          <LogoIcon size={44} white />
+        </div>
+        <h1>Cristal <span>Desarrollos</span></h1>
+        <p>Sistema de Gestión Comercial · CRM</p>
+      </div>
+      <div className="login-divider" />
+      <div style={{ textAlign: "center", padding: "10px 0 20px" }}>
+        <div style={{ fontSize: 52, marginBottom: 14 }}>⏳</div>
+        <h3 style={{ fontFamily: "Outfit", fontSize: 18, color: "var(--text)", marginBottom: 10 }}>
+          Cuenta pendiente de activación
+        </h3>
+        <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.7, marginBottom: 20 }}>
+          Hola <strong style={{ color: "var(--verde-claro)" }}>{user.name}</strong>, tu registro fue recibido.<br />
+          Un administrador debe habilitar tu cuenta antes de que puedas acceder al sistema.
+        </p>
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "var(--text3)", marginBottom: 22, textAlign: "left", lineHeight: 1.6 }}>
+          <div style={{ marginBottom: 4 }}>📧 Email registrado: <strong style={{ color: "var(--text2)" }}>{user.email}</strong></div>
+          <div>🕐 Estado: <span className="badge b-yellow" style={{ fontSize: 11 }}>Pendiente de aprobación</span></div>
+        </div>
+        <button className="btn btn-ghost btn-full" onClick={onLogout}>
+          🚪 Cerrar sesión
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+// ============================================================
+// LOGIN + REGISTRO
 // ============================================================
 const Login = ({ onLogin }) => {
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [modo, setModo] = useState("login"); // "login" | "registro"
+  const [form, setForm] = useState({ email: "", password: "", name: "", zona: "", confirm: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [initializing, setInitializing] = useState(true);
+  const [registroOk, setRegistroOk] = useState(false);
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        // Esperar a que Firebase cargue completamente
-        const firebase = await loadFirebase();
-        const firestore = firebase.db;
-        const firebaseAuth = firebase.auth;
-
-        if (!firestore || !firebaseAuth) {
-          throw new Error("Firebase no cargó correctamente");
-        }
-
-        // Crear usuarios iniciales si no existen
-        const usersSnapshot = await firestore.collection('users').get();
-        if (usersSnapshot.empty) {
-          for (const u of INITIAL_USERS) {
-            try {
-              await firebaseAuth.createUserWithEmailAndPassword(u.email, u.password);
-            } catch (e) {
-              // ya existe, ok
-            }
-            await firestore.collection('users').doc(u.email).set({
-              id: u.id, username: u.username, email: u.email,
-              role: u.role, name: u.name, avatar: u.avatar, zona: u.zona,
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Init error:', err);
-      } finally {
-        setInitializing(false);
-      }
-    };
-    init();
-  }, []);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleLogin = async () => {
     if (!form.email || !form.password) { setError("Completá email y contraseña"); return; }
@@ -670,24 +672,26 @@ const Login = ({ onLogin }) => {
       const firestore = firebase.db;
       const firebaseAuth = firebase.auth;
 
-      if (!firebaseAuth) throw new Error("Firebase Auth no disponible");
-
       const cred = await firebaseAuth.signInWithEmailAndPassword(form.email, form.password);
       const userDoc = await firestore.collection('users').doc(form.email).get();
 
       if (userDoc.exists) {
-        onLogin({ uid: cred.user.uid, email: form.email, ...userDoc.data() });
+        const data = userDoc.data();
+        onLogin({ uid: cred.user.uid, email: form.email, ...data });
       } else {
-        // Fallback: buscar en INITIAL_USERS
-        const localUser = INITIAL_USERS.find(u => u.email === form.email);
-        if (localUser) {
-          onLogin({ uid: cred.user.uid, ...localUser });
+        // El admin se registra por primera vez (no tiene doc en Firestore aún)
+        if (form.email === ADMIN_EMAIL) {
+          const adminData = {
+            id: uid(), email: form.email, name: "Administrador",
+            avatar: "A", role: "admin", zona: "", status: "activo",
+          };
+          await firestore.collection('users').doc(form.email).set(adminData);
+          onLogin({ uid: cred.user.uid, ...adminData });
         } else {
-          setError("Usuario no encontrado");
+          setError("Tu cuenta no está registrada en el sistema.");
         }
       }
     } catch (err) {
-      console.error('Login error:', err);
       if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
         setError("Email o contraseña incorrectos");
       } else {
@@ -698,26 +702,68 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  if (initializing) {
+  const handleRegistro = async () => {
+    if (!form.name.trim()) { setError("Ingresá tu nombre completo"); return; }
+    if (!form.email.trim()) { setError("Ingresá tu email"); return; }
+    if (!form.zona) { setError("Seleccioná tu zona"); return; }
+    if (form.password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres"); return; }
+    if (form.password !== form.confirm) { setError("Las contraseñas no coinciden"); return; }
+    if (form.email === ADMIN_EMAIL) { setError("Ese email está reservado"); return; }
+
+    setLoading(true);
+    setError("");
+    try {
+      const firebase = await loadFirebase();
+      const firestore = firebase.db;
+      const firebaseAuth = firebase.auth;
+
+      // Verificar si ya existe en Firestore
+      const existing = await firestore.collection('users').doc(form.email).get();
+      if (existing.exists) { setError("Ya existe una cuenta con ese email"); setLoading(false); return; }
+
+      // Crear en Firebase Auth
+      await firebaseAuth.createUserWithEmailAndPassword(form.email, form.password);
+
+      // Guardar en Firestore con status "pendiente"
+      const avatar = form.name.trim().charAt(0).toUpperCase();
+      await firestore.collection('users').doc(form.email).set({
+        id: uid(),
+        email: form.email,
+        name: form.name.trim(),
+        avatar,
+        role: "vendedor",
+        zona: form.zona,
+        status: "pendiente", // admin debe aprobar
+        fechaRegistro: today(),
+      });
+
+      setRegistroOk(true);
+    } catch (err) {
+      if (err.code === 'auth/email-already-in-use') {
+        setError("Ya existe una cuenta con ese email");
+      } else {
+        setError("Error al registrarse: " + (err.message || "Intenta nuevamente"));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (registroOk) {
     return (
       <div className="login-wrap">
-        <div className="login-bg" />
-        <div className="login-grid" />
-        <div className="login-card">
-          <div className="login-logo">
-            <div className="login-logo-ring">
-              <LogoIcon size={44} white />
-            </div>
-            <h1>Cristal <span>Desarrollos</span></h1>
-            <p>Sistema de Gestión Comercial · CRM</p>
-          </div>
-          <div className="login-divider" />
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
-            <p style={{ marginTop: 16, fontSize: 13, color: 'var(--text3)' }}>
-              Inicializando Firebase...
-            </p>
-          </div>
+        <div className="login-bg" /><div className="login-grid" />
+        <div className="login-card" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
+          <h2 style={{ fontFamily: "Outfit", marginBottom: 10, color: "var(--verde-claro)" }}>¡Registro exitoso!</h2>
+          <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.7, marginBottom: 22 }}>
+            Tu cuenta fue creada con éxito.<br />
+            Un administrador debe habilitarla antes de que puedas ingresar.<br />
+            Te avisarán cuando esté activa.
+          </p>
+          <button className="btn btn-primary btn-full" onClick={() => { setModo("login"); setRegistroOk(false); setForm({ email: form.email, password: "", name: "", zona: "", confirm: "" }); }}>
+            Volver al Login
+          </button>
         </div>
       </div>
     );
@@ -729,46 +775,90 @@ const Login = ({ onLogin }) => {
       <div className="login-grid" />
       <div className="login-card">
         <div className="login-logo">
-          <div className="login-logo-ring">
-            <LogoIcon size={44} white />
-          </div>
+          <div className="login-logo-ring"><LogoIcon size={44} white /></div>
           <h1>Cristal <span>Desarrollos</span></h1>
           <p>Sistema de Gestión Comercial · CRM</p>
         </div>
-        <div className="login-divider" />
+
+        {/* TABS login / registro */}
+        <div style={{ display: "flex", gap: 2, marginBottom: 22, background: "var(--bg3)", borderRadius: 10, padding: 4 }}>
+          {[["login", "Ingresar"], ["registro", "Registrarme"]].map(([m, label]) => (
+            <button key={m} onClick={() => { setModo(m); setError(""); }}
+              style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "Outfit", fontSize: 13, fontWeight: 700,
+                background: modo === m ? "var(--verde-principal)" : "transparent",
+                color: modo === m ? "white" : "var(--text3)",
+                boxShadow: modo === m ? "0 2px 8px rgba(38,148,95,0.35)" : "none",
+                transition: "all 0.2s",
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         {error && <div className="alert alert-err">{error}</div>}
-        <div className="form-group">
-          <label className="form-label">Email</label>
-          <input 
-            className="form-input" 
-            type="email"
-            placeholder="tu@email.com" 
-            value={form.email} 
-            onChange={e => setForm({ ...form, email: e.target.value })} 
-            onKeyDown={e => e.key === "Enter" && handleLogin()} 
-          />
-        </div>
-        <div className="form-group" style={{ marginBottom: 22 }}>
-          <label className="form-label">Contraseña</label>
-          <input 
-            className="form-input" 
-            type="password" 
-            placeholder="••••••••" 
-            value={form.password} 
-            onChange={e => setForm({ ...form, password: e.target.value })} 
-            onKeyDown={e => e.key === "Enter" && handleLogin()} 
-          />
-        </div>
-        <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading}>
-          {loading ? <><span className="spinner" /> Verificando...</> : "Ingresar al Sistema →"}
-        </button>
-        <div style={{ marginTop: 20, padding: "11px 14px", background: "var(--bg3)", borderRadius: 8, fontSize: 12, color: "var(--text3)", lineHeight: 1.6, border: "1px solid var(--border)" }}>
-          <span style={{ color: "var(--text2)", fontWeight: 600 }}>Accesos demo:</span><br />
-          admin@cristaldesarrollos.com / cristal2024<br />
-          lucas@cristaldesarrollos.com / lucas123<br />
-          sofia@cristaldesarrollos.com / sofia123<br />
-          martin@cristaldesarrollos.com / martin123
-        </div>
+
+        {modo === "login" ? (
+          <>
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input className="form-input" type="email" placeholder="tu@email.com"
+                value={form.email} onChange={e => set("email", e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleLogin()} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 22 }}>
+              <label className="form-label">Contraseña</label>
+              <input className="form-input" type="password" placeholder="••••••••"
+                value={form.password} onChange={e => set("password", e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleLogin()} />
+            </div>
+            <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading}>
+              {loading ? <><span className="spinner" /> Verificando...</> : "Ingresar al Sistema →"}
+            </button>
+            <p style={{ textAlign: "center", fontSize: 12, color: "var(--text3)", marginTop: 16 }}>
+              ¿Sos nuevo? <span style={{ color: "var(--verde-claro)", cursor: "pointer", fontWeight: 600 }}
+                onClick={() => { setModo("registro"); setError(""); }}>Registrate aquí</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="form-group">
+              <label className="form-label">Nombre Completo *</label>
+              <input className="form-input" placeholder="Juan Pérez"
+                value={form.name} onChange={e => set("name", e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Email *</label>
+              <input className="form-input" type="email" placeholder="tu@email.com"
+                value={form.email} onChange={e => set("email", e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Zona de trabajo *</label>
+              <select className="form-select" value={form.zona} onChange={e => set("zona", e.target.value)}>
+                <option value="">Seleccionar...</option>
+                <option>Zona Sur</option>
+                <option>Zona Norte</option>
+                <option>Zona Oeste</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Contraseña * (mín. 6 caracteres)</label>
+              <input className="form-input" type="password" placeholder="••••••••"
+                value={form.password} onChange={e => set("password", e.target.value)} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 22 }}>
+              <label className="form-label">Confirmar Contraseña *</label>
+              <input className="form-input" type="password" placeholder="••••••••"
+                value={form.confirm} onChange={e => set("confirm", e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleRegistro()} />
+            </div>
+            <button className="btn btn-primary btn-full" onClick={handleRegistro} disabled={loading}>
+              {loading ? <><span className="spinner" /> Registrando...</> : "Crear mi cuenta →"}
+            </button>
+            <div style={{ marginTop: 14, padding: "10px 14px", background: "var(--bg3)", borderRadius: 8, fontSize: 12, color: "var(--text3)", border: "1px solid var(--border)", lineHeight: 1.6 }}>
+              ℹ️ Tu cuenta quedará <strong style={{ color: "var(--yellow)" }}>pendiente de aprobación</strong>. El administrador deberá habilitarla para que puedas ingresar.
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1180,11 +1270,12 @@ const ModalDetalleVenta = ({ v, onClose, onUpdate }) => {
 // ============================================================
 // DASHBOARD ADMIN
 // ============================================================
-const Dashboard = ({ ventas, gastos, leads }) => {
+const Dashboard = ({ ventas, gastos, leads, users }) => {
   const totalVentas = ventas.reduce((s, v) => s + v.montoTotal, 0);
   const totalComisiones = ventas.reduce((s, v) => s + v.comision, 0);
   const totalGastos = gastos.filter(g => g.moneda === "USD").reduce((s, g) => s + g.monto, 0);
   const pendientes = ventas.filter(v => v.estado === "pendiente").length;
+  const vendedores = users.filter(u => u.role === "vendedor" && u.status === "activo");
   return (
     <div>
       <div className="stats-row">
@@ -1198,7 +1289,8 @@ const Dashboard = ({ ventas, gastos, leads }) => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div className="card">
           <div className="card-header"><div className="card-title">📊 Performance por Vendedor</div></div>
-          {INITIAL_USERS.filter(u => u.role === "vendedor").map(u => {
+          {vendedores.length === 0 && <div className="empty"><div className="empty-icon">👥</div><p>Sin vendedores activos</p></div>}
+          {vendedores.map(u => {
             const vv = ventas.filter(v => v.vendedorId === u.id);
             const total = vv.reduce((s, v) => s + v.montoTotal, 0);
             const pct = totalVentas > 0 ? (total / totalVentas * 100) : 0;
@@ -1295,7 +1387,7 @@ const VentasView = ({ ventas, setVentas, currentUser }) => {
               ) : filtered.map(v => (
                 <tr key={v.id}>
                   <td>{v.fecha}</td>
-                  {currentUser.role === "admin" && <td><div style={{ display: "flex", alignItems: "center", gap: 6 }}><div className="avatar" style={{ width: 24, height: 24, fontSize: 10 }}>{INITIAL_USERS.find(u => u.id === v.vendedorId)?.avatar}</div><span style={{ fontSize: 12 }}>{v.vendedorNombre}</span></div></td>}
+                  {currentUser.role === "admin" && <td><div style={{ display: "flex", alignItems: "center", gap: 6 }}><div className="avatar" style={{ width: 24, height: 24, fontSize: 10 }}>{v.vendedorNombre?.charAt(0)}</div><span style={{ fontSize: 12 }}>{v.vendedorNombre}</span></div></td>}
                   <td style={{ fontWeight: 600, color: "var(--text)" }}>{v.cliente?.nombre}</td>
                   <td style={{ fontSize: 12 }}>{v.proyecto}</td>
                   <td style={{ color: "var(--verde-claro)", fontWeight: 600 }}>{formatUSD(v.montoReserva)}</td>
@@ -1890,11 +1982,20 @@ const WAView = ({ connected, setConnected, leads, setLeads, currentUser }) => {
 // ============================================================
 // VENDEDORES VIEW (Admin)
 // ============================================================
-const VendedoresView = ({ ventas, gastos, leads }) => (
+const VendedoresView = ({ ventas, gastos, leads, users }) => {
+  const vendedores = users.filter(u => u.role === "vendedor" && u.status === "activo");
+  return (
   <div>
     <div className="ph-title" style={{ marginBottom: 22 }}>Equipo de Vendedores</div>
+    {vendedores.length === 0 && (
+      <div className="card" style={{ textAlign: "center", padding: "60px 20px" }}>
+        <div style={{ fontSize: 52, marginBottom: 14 }}>👥</div>
+        <h3 style={{ fontFamily: "Outfit", marginBottom: 8 }}>Sin vendedores activos</h3>
+        <p style={{ fontSize: 13, color: "var(--text3)" }}>Habilitá vendedores desde Configuración → Gestión de Usuarios.</p>
+      </div>
+    )}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-      {INITIAL_USERS.filter(u => u.role === "vendedor").map(u => {
+      {vendedores.map(u => {
         const vv = ventas.filter(x => x.vendedorId === u.id);
         const gg = gastos.filter(x => x.vendedorId === u.id);
         const ll = leads.filter(x => x.vendedorId === u.id);
@@ -1926,7 +2027,8 @@ const VendedoresView = ({ ventas, gastos, leads }) => (
       })}
     </div>
   </div>
-);
+  );
+};
 
 // ============================================================
 // RESUMEN VENDEDOR
@@ -1990,50 +2092,141 @@ const ResumenView = ({ ventas, gastos, leads, user, setVentas }) => {
 };
 
 // ============================================================
-// CONFIG VIEW
+// CONFIG VIEW — con gestión de usuarios
 // ============================================================
-const ConfigView = ({ apiKey, setApiKey }) => {
+const ConfigView = ({ apiKey, setApiKey, users, onUpdateUserStatus }) => {
   const [show, setShow] = useState(false);
   const [tmp, setTmp] = useState(apiKey);
   const [ok, setOk] = useState(false);
+  const [tab, setTab] = useState("usuarios"); // "usuarios" | "comisiones" | "api"
   const save = () => { setApiKey(tmp); setOk(true); setTimeout(() => setOk(false), 2500); };
+
+  const pendientes = users.filter(u => u.role === "vendedor" && u.status === "pendiente");
+  const activos = users.filter(u => u.role === "vendedor" && u.status === "activo");
+  const inactivos = users.filter(u => u.role === "vendedor" && u.status === "inactivo");
+
+  const statusBadge = (s) => {
+    if (s === "activo") return <span className="badge b-cyan">✓ Activo</span>;
+    if (s === "pendiente") return <span className="badge b-yellow">⏳ Pendiente</span>;
+    return <span className="badge b-red">✗ Inactivo</span>;
+  };
+
   return (
-    <div style={{ maxWidth: 580 }}>
-      <div className="ph-title" style={{ marginBottom: 22 }}>Configuración del Sistema</div>
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="card-title">🤖 OpenAI API Key</div>
-        <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 16, lineHeight: 1.6 }}>
-          Usada para que la IA analice automáticamente los comprobantes de gastos que suben los vendedores. Ingresá tu clave de OpenAI.
-        </p>
-        <div style={{ position: "relative" }}>
-          <input className="form-input" type={show ? "text" : "password"} placeholder="sk-proj-..." value={tmp} onChange={e => setTmp(e.target.value)} style={{ paddingRight: 44 }} />
-          <button onClick={() => setShow(!show)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text3)" }}>{show ? "🙈" : "👁"}</button>
+    <div style={{ maxWidth: 680 }}>
+      <div className="ph-title" style={{ marginBottom: 18 }}>Configuración del Sistema</div>
+
+      {/* Alerta de pendientes */}
+      {pendientes.length > 0 && (
+        <div className="alert" style={{ background: "rgba(240,192,64,0.08)", border: "1px solid rgba(240,192,64,0.3)", color: "var(--yellow)", marginBottom: 18, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <span><strong>{pendientes.length} vendedor{pendientes.length > 1 ? "es" : ""}</strong> esperando aprobación</span>
+          <button className="btn btn-sm btn-ghost" style={{ marginLeft: "auto", borderColor: "rgba(240,192,64,0.4)", color: "var(--yellow)" }} onClick={() => setTab("usuarios")}>
+            Ver ahora →
+          </button>
         </div>
-        {ok && <div className="alert alert-ok" style={{ marginTop: 10 }}>✅ API Key guardada</div>}
-        <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={save}>Guardar API Key</button>
-      </div>
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="card-title">💰 Estructura de Comisiones</div>
-        {[["Comisión base", "4% del monto total de venta"], ["Bonus fijo por operación", "+ USD 200"], ["Fórmula aplicada", "(Monto × 0.04) + 200"]].map(([l, v]) => (
-          <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--border)", fontSize: 13 }}>
-            <span style={{ color: "var(--text2)" }}>{l}</span>
-            <span style={{ color: "var(--cyan)", fontWeight: 700 }}>{v}</span>
-          </div>
+      )}
+
+      {/* Tabs */}
+      <div className="tabs" style={{ marginBottom: 22 }}>
+        {[["usuarios", `👥 Usuarios${pendientes.length > 0 ? ` (${pendientes.length} 🔔)` : ""}`], ["comisiones", "💰 Comisiones"], ["api", "🤖 API Keys"]].map(([t, label]) => (
+          <div key={t} className={`tab ${tab === t ? "act" : ""}`} onClick={() => setTab(t)}>{label}</div>
         ))}
       </div>
-      <div className="card">
-        <div className="card-title">👥 Usuarios del Sistema</div>
-        {INITIAL_USERS.map(u => (
-          <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-            <div className="avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{u.avatar}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{u.name}</div>
-              <div style={{ fontSize: 11, color: "var(--text3)" }}>@{u.username} · {u.email}</div>
+
+      {/* ---- TAB: USUARIOS ---- */}
+      {tab === "usuarios" && (
+        <div>
+          {/* PENDIENTES */}
+          {pendientes.length > 0 && (
+            <div className="card" style={{ marginBottom: 14, border: "1px solid rgba(240,192,64,0.3)" }}>
+              <div className="card-header">
+                <div className="card-title" style={{ color: "var(--yellow)" }}>⏳ Solicitudes Pendientes ({pendientes.length})</div>
+              </div>
+              {pendientes.map(u => (
+                <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div className="avatar" style={{ width: 38, height: 38, fontSize: 14 }}>{u.avatar}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{u.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text3)" }}>{u.email} · {u.zona} · Registrado: {u.fechaRegistro}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn btn-sm btn-danger" onClick={() => onUpdateUserStatus(u.email, "inactivo")}>✗ Rechazar</button>
+                    <button className="btn btn-sm btn-success" onClick={() => onUpdateUserStatus(u.email, "activo")}>✓ Habilitar</button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <span className={`badge ${u.role === "admin" ? "b-yellow" : "b-verde"}`}>{u.role === "admin" ? "Admin" : "Vendedor"}</span>
+          )}
+
+          {/* ACTIVOS */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-header">
+              <div className="card-title">✅ Vendedores Activos ({activos.length})</div>
+            </div>
+            {activos.length === 0 && <div style={{ fontSize: 13, color: "var(--text3)", padding: "12px 0" }}>Sin vendedores activos aún.</div>}
+            {activos.map(u => (
+              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--border)" }}>
+                <div className="avatar" style={{ width: 34, height: 34, fontSize: 12 }}>{u.avatar}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--text3)" }}>{u.email} · {u.zona}</div>
+                </div>
+                {statusBadge(u.status)}
+                <button className="btn btn-sm btn-danger" style={{ marginLeft: 8 }} onClick={() => onUpdateUserStatus(u.email, "inactivo")}>Desactivar</button>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+
+          {/* INACTIVOS */}
+          {inactivos.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title" style={{ color: "var(--text3)" }}>🚫 Desactivados ({inactivos.length})</div>
+              </div>
+              {inactivos.map(u => (
+                <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div className="avatar" style={{ width: 34, height: 34, fontSize: 12, opacity: 0.5 }}>{u.avatar}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text3)" }}>{u.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text4)" }}>{u.email} · {u.zona}</div>
+                  </div>
+                  {statusBadge(u.status)}
+                  <button className="btn btn-sm btn-success" style={{ marginLeft: 8 }} onClick={() => onUpdateUserStatus(u.email, "activo")}>Reactivar</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- TAB: COMISIONES ---- */}
+      {tab === "comisiones" && (
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 14 }}>💰 Estructura de Comisiones</div>
+          {[["Comisión base", "4% del monto total de venta"], ["Bonus fijo por operación", "+ USD 200"], ["Fórmula aplicada", "(Monto × 0.04) + 200"]].map(([l, v]) => (
+            <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--border)", fontSize: 13 }}>
+              <span style={{ color: "var(--text2)" }}>{l}</span>
+              <span style={{ color: "var(--cyan)", fontWeight: 700 }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ---- TAB: API ---- */}
+      {tab === "api" && (
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 8 }}>🤖 OpenAI API Key</div>
+          <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 16, lineHeight: 1.6 }}>
+            Usada para que la IA analice automáticamente los comprobantes de gastos.
+          </p>
+          <div style={{ position: "relative" }}>
+            <input className="form-input" type={show ? "text" : "password"} placeholder="sk-proj-..." value={tmp} onChange={e => setTmp(e.target.value)} style={{ paddingRight: 44 }} />
+            <button onClick={() => setShow(!show)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text3)" }}>{show ? "🙈" : "👁"}</button>
+          </div>
+          {ok && <div className="alert alert-ok" style={{ marginTop: 10 }}>✅ API Key guardada</div>}
+          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={save}>Guardar API Key</button>
+        </div>
+      )}
     </div>
   );
 };
@@ -2651,6 +2844,7 @@ const DocumentacionView = ({ currentUser, hojas, setHojas }) => {
 export default function CristalCRM() {
   const [user, setUser] = useState(null);
   const [active, setActive] = useState(null);
+  const [users, setUsers] = useState([]); // usuarios dinámicos desde Firestore
   
   // LocalStorage persistence para datos
   const [ventas, setVentas] = useState(() => {
@@ -2684,37 +2878,54 @@ export default function CristalCRM() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Persistir cambios en localStorage
-  useEffect(() => {
-    localStorage.setItem('cristal_ventas', JSON.stringify(ventas));
-  }, [ventas]);
+  useEffect(() => { localStorage.setItem('cristal_ventas', JSON.stringify(ventas)); }, [ventas]);
+  useEffect(() => { localStorage.setItem('cristal_gastos', JSON.stringify(gastos)); }, [gastos]);
+  useEffect(() => { localStorage.setItem('cristal_leads', JSON.stringify(leads)); }, [leads]);
+  useEffect(() => { localStorage.setItem('cristal_hojas', JSON.stringify(hojas)); }, [hojas]);
+  useEffect(() => { localStorage.setItem('cristal_apiKey', apiKey); }, [apiKey]);
+  useEffect(() => { localStorage.setItem('cristal_waConnected', waConnected.toString()); }, [waConnected]);
 
+  // Cargar todos los usuarios desde Firestore cuando el admin inicia sesión
   useEffect(() => {
-    localStorage.setItem('cristal_gastos', JSON.stringify(gastos));
-  }, [gastos]);
-
-  useEffect(() => {
-    localStorage.setItem('cristal_leads', JSON.stringify(leads));
-  }, [leads]);
-
-  useEffect(() => {
-    localStorage.setItem('cristal_hojas', JSON.stringify(hojas));
-  }, [hojas]);
-
-  useEffect(() => {
-    localStorage.setItem('cristal_apiKey', apiKey);
-  }, [apiKey]);
-
-  useEffect(() => {
-    localStorage.setItem('cristal_waConnected', waConnected.toString());
-  }, [waConnected]);
+    if (!user || user.role !== "admin") return;
+    const loadUsers = async () => {
+      try {
+        const firebase = await loadFirebase();
+        const snap = await firebase.db.collection('users').get();
+        const data = snap.docs.map(d => d.data());
+        setUsers(data);
+      } catch (e) {
+        console.error("Error cargando usuarios:", e);
+      }
+    };
+    loadUsers();
+  }, [user]);
 
   useEffect(() => {
     if (user) setActive(user.role === "admin" ? "dashboard" : "resumen");
   }, [user]);
 
+  // Actualizar status de un usuario en Firestore y en el estado local
+  const handleUpdateUserStatus = async (email, newStatus) => {
+    try {
+      const firebase = await loadFirebase();
+      await firebase.db.collection('users').doc(email).update({ status: newStatus });
+      setUsers(prev => prev.map(u => u.email === email ? { ...u, status: newStatus } : u));
+    } catch (e) {
+      alert("Error al actualizar: " + e.message);
+    }
+  };
+
   if (!user) return <><style>{styles}</style><Login onLogin={setUser} /></>;
 
+  // Si el vendedor está pendiente o inactivo, mostrar pantalla de espera
+  if (user.role === "vendedor" && user.status !== "activo") {
+    return <><style>{styles}</style><CuentaPendiente user={user} onLogout={() => setUser(null)} /></>;
+  }
+
   const pendientes = ventas.filter(v => v.estado === "pendiente").length;
+  // Pendientes de aprobación de cuentas (para badge en config)
+  const pendientesUsuarios = users.filter(u => u.role === "vendedor" && u.status === "pendiente").length;
 
   const titles = {
     dashboard: "Dashboard General", ventas: "Gestión de Ventas", gastos: "Gastos del Equipo",
@@ -2725,12 +2936,12 @@ export default function CristalCRM() {
 
   const renderPage = () => {
     switch (active) {
-      case "dashboard": return <Dashboard ventas={ventas} gastos={gastos} leads={leads} />;
+      case "dashboard": return <Dashboard ventas={ventas} gastos={gastos} leads={leads} users={users} />;
       case "ventas": return <VentasView ventas={ventas} setVentas={setVentas} currentUser={user} />;
       case "gastos": return <GastosView gastos={gastos} setGastos={setGastos} currentUser={user} apiKey={apiKey} />;
       case "pipeline": return <PipelineView leads={leads} setLeads={setLeads} currentUser={user} />;
-      case "vendedores": return <VendedoresView ventas={ventas} gastos={gastos} leads={leads} />;
-      case "config": return <ConfigView apiKey={apiKey} setApiKey={setApiKey} />;
+      case "vendedores": return <VendedoresView ventas={ventas} gastos={gastos} leads={leads} users={users} />;
+      case "config": return <ConfigView apiKey={apiKey} setApiKey={setApiKey} users={users} onUpdateUserStatus={handleUpdateUserStatus} />;
       case "resumen": return <ResumenView ventas={ventas} gastos={gastos} leads={leads} user={user} setVentas={setVentas} />;
       case "mis-ventas": return <VentasView ventas={ventas} setVentas={setVentas} currentUser={user} />;
       case "mis-gastos": return <GastosView gastos={gastos} setGastos={setGastos} currentUser={user} apiKey={apiKey} />;
@@ -2748,7 +2959,7 @@ export default function CristalCRM() {
         { id: "gastos",    label: "Gastos",    icon: "🚗" },
         { id: "vendedores",label: "Equipo",    icon: "👥" },
         { id: "documentacion", label: "Docs",  icon: "📄" },
-        { id: "config",    label: "Config",    icon: "⚙️" },
+        { id: "config",    label: "Config",    icon: "⚙️", badge: pendientesUsuarios || null },
       ]
     : [
         { id: "resumen",   label: "Inicio",    icon: "🏠" },
@@ -2805,6 +3016,11 @@ export default function CristalCRM() {
                 <button className="btn btn-ghost btn-sm" onClick={() => setActive("ventas")} style={{ gap: 6 }}>
                   <div className="notif-pulse" />
                   <span style={{ fontSize: 12 }}>{pendientes}</span>
+                </button>
+              )}
+              {user.role === "admin" && pendientesUsuarios > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setActive("config")} style={{ gap: 6, borderColor: "rgba(240,192,64,0.4)", color: "var(--yellow)" }}>
+                  👤 <span style={{ fontSize: 12 }}>{pendientesUsuarios} nuevo{pendientesUsuarios > 1 ? "s" : ""}</span>
                 </button>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
