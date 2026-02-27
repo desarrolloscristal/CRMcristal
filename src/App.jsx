@@ -489,6 +489,11 @@ const styles = `
   .pip-move { display: flex; gap: 3px; margin-top: 7px; flex-wrap: wrap; }
   .pip-move-btn { padding: 2px 7px; font-size: 10px; background: var(--bg4); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; color: var(--text3); transition: all 0.12s; font-family: 'Outfit', sans-serif; }
   .pip-move-btn:hover { background: var(--verde-suave); border-color: var(--verde-border); color: var(--verde-claro); }
+  /* Desktop: grid que entra sin scroll */
+  .pip-desktop { display: block; }
+  .pip-desktop-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; min-height: 60vh; }
+  /* Mobile: oculto por defecto */
+  .pip-mobile { display: none; }
   
   /* ======================== UPLOAD ======================== */
   .upload-zone {
@@ -572,45 +577,47 @@ const styles = `
       display: block !important;
       position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 998;
     }
-    .main { margin-left: 0; padding-bottom: 72px; }
+    .main { margin-left: 0; padding-bottom: 72px; overflow-x: hidden; }
+    body { overflow-x: hidden; }
     .topbar { position: sticky; top: 0; z-index: 100; padding: 10px 14px; }
     .topbar-left h2 { font-size: 14px; }
     .hamburger { display: flex !important; }
     .mobile-bottom-nav { display: flex !important; }
-    .page { padding: 14px 12px; }
+    .page { padding: 14px 12px; overflow-x: hidden; }
     .fg { grid-template-columns: 1fr; }
+    /* Stats: 2 columnas en mobile */
     .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
     .detail-grid { grid-template-columns: 1fr; }
-    .pipeline-board { gap: 8px; }
-    .pip-col { min-width: 240px; }
     .modal { margin: 8px; max-height: calc(100vh - 16px); border-radius: 12px; }
     .modal-body { padding: 16px; }
     .ph { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
     .ph-title { font-size: 17px; }
     .btn-full { padding: 12px; font-size: 14px; }
-    /* Ocultar tabla en mobile, mostrar cards */
+    /* Ventas: cards en mobile */
     .ventas-desktop-table { display: none !important; }
     .ventas-mobile-list { display: block !important; }
-    /* Tabs scrollables en mobile */
-    .tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
-    .pill-filters { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+    /* Pipeline: mobile lista vertical, ocultar grid */
+    .pip-desktop { display: none !important; }
+    .pip-mobile { display: block !important; }
+    /* Gastos: ocultar tabla, mostrar cards */
+    .gastos-tabla { display: none !important; }
+    .gastos-cards { display: block !important; }
+    /* Tabs scrollables */
+    .tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+    .pill-filters { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
     .pill-filters::-webkit-scrollbar { display: none; }
-    /* Cards más compactas */
+    /* Cards compactas */
     .card { padding: 14px; border-radius: 10px; }
     .stat { padding: 14px; }
     .stat-val { font-size: 18px; }
-    /* WA card ocupa más espacio */
     .wa-card { max-width: 100%; }
-    /* Config view */
-    .config-tabs { flex-direction: column; }
-    /* Login card mobile */
     .login-card { padding: 28px 20px; border-radius: 16px; margin: 12px; }
-    /* topbar avatar */
-    .topbar-avatar span { display: none; }
   }
-  /* Mostrar tabla en desktop, ocultar lista mobile */
+  /* Desktop defaults */
   .ventas-mobile-list { display: none; }
   .ventas-desktop-table { display: block; }
+  .gastos-cards { display: none; }
+  .gastos-tabla { display: block; }
   .mobile-overlay { display: none; }
   .hamburger { display: none; }
   .mobile-bottom-nav { display: none; }
@@ -1553,7 +1560,33 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
         <button className={`btn btn-sm ${filtro === "todos" ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltro("todos")}>Todos</button>
         {cats.map(c => <button key={c} className={`btn btn-sm ${filtro === c ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltro(c)}>{c}</button>)}
       </div>
-      <div className="card">
+
+      {/* Mobile: cards */}
+      <div className="gastos-cards">
+        {filtered.length === 0 ? (
+          <div className="empty"><div className="empty-icon">💸</div><p>Sin gastos registrados</p></div>
+        ) : filtered.map(g => (
+          <div key={g.id} className="card" style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <div>
+                <span className="badge b-verde" style={{ marginBottom: 4, display: "inline-block" }}>{g.categoria}</span>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>{g.descripcion}</div>
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>{g.fecha}{currentUser.role === "admin" && ` · ${g.vendedorNombre}`}</div>
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: g.moneda === "USD" ? "var(--verde-claro)" : "var(--text)", flexShrink: 0, marginLeft: 10 }}>
+                {g.moneda === "USD" ? formatUSD(g.monto) : formatARS(g.monto)}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {g.comprobante && <span className="badge b-cyan">📎 Comprobante</span>}
+              {g.aiInterpretacion && <span className="badge b-verde">🤖 IA</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: tabla */}
+      <div className="gastos-tabla card">
         <div className="table-wrap">
           <table>
             <thead><tr>
@@ -1770,9 +1803,10 @@ const ModalDetalleLead = ({ lead, onClose, onMove, onSave, onDelete }) => {
 const PipelineView = ({ leads, setLeads, currentUser }) => {
   const [modal, setModal] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [moverModal, setMoverModal] = useState(null); // lead a mover
+  const [moverModal, setMoverModal] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dragOver, setDragOver] = useState(null);
+  const [mobileEtapa, setMobileEtapa] = useState("nuevo"); // filtro mobile
 
   const mine = currentUser.role === "admin" ? leads : leads.filter(l => l.vendedorId === currentUser.id);
   const move = (id, etapa) => {
@@ -1781,151 +1815,140 @@ const PipelineView = ({ leads, setLeads, currentUser }) => {
     if (moverModal?.id === id) setMoverModal(null);
   };
 
-  // ---- DRAG & DROP handlers ----
-  const onDragStart = (e, id) => {
-    setDragId(id);
-    e.dataTransfer.effectAllowed = "move";
-    // Pequeño delay para que el ghost se vea bien
-    setTimeout(() => e.target.style.opacity = "0.4", 0);
-  };
-  const onDragEnd = (e) => {
-    e.target.style.opacity = "1";
-    setDragId(null);
-    setDragOver(null);
-  };
-  const onDragOver = (e, stageId) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOver(stageId);
-  };
-  const onDrop = (e, stageId) => {
-    e.preventDefault();
-    if (dragId) move(dragId, stageId);
-    setDragOver(null);
-  };
-
+  const onDragStart = (e, id) => { setDragId(id); e.dataTransfer.effectAllowed = "move"; setTimeout(() => e.target.style.opacity = "0.4", 0); };
+  const onDragEnd = (e) => { e.target.style.opacity = "1"; setDragId(null); setDragOver(null); };
+  const onDragOver = (e, stageId) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(stageId); };
+  const onDrop = (e, stageId) => { e.preventDefault(); if (dragId) move(dragId, stageId); setDragOver(null); };
   const origenColor = (o) => o === "Meta Ads" ? "b-verde" : o === "Google Ads" ? "b-cyan" : o === "WhatsApp" ? "b-yellow" : "b-dark";
+
+  const LeadCard = ({ l, showMover = true }) => (
+    <div className="pip-card" onClick={() => setSelected(l)} style={{ cursor: "pointer", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+        <div className="pip-card-name" style={{ flex: 1 }}>{l.nombre}</div>
+        {showMover && (
+          <div title="Mover a etapa" onClick={e => { e.stopPropagation(); setMoverModal(l); }}
+            style={{ width: 24, height: 24, borderRadius: 6, background: "var(--bg4)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, cursor: "pointer", flexShrink: 0, marginLeft: 6 }}>↕</div>
+        )}
+      </div>
+      <div className="pip-card-phone">📞 {l.telefono}</div>
+      <div style={{ marginBottom: 5, marginTop: 4 }}>
+        <span className={`badge ${origenColor(l.origen)}`} style={{ fontSize: 10 }}>{l.origen}</span>
+      </div>
+      <div className="pip-card-foot">
+        <div className="pip-budget">{l.presupuesto}</div>
+        <div className="pip-date">{l.ultimoContacto}</div>
+      </div>
+    </div>
+  );
 
   return (
     <div>
       <div className="ph">
         <div>
           <div className="ph-title">Pipeline de Leads</div>
-          <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }} className="pip-subtitle">
             Arrastrá las tarjetas entre columnas o usá el botón ↕ para mover
           </div>
         </div>
         <button className="btn btn-primary" onClick={() => setModal(true)}>+ Nuevo Lead</button>
       </div>
 
-      <div className="pipeline-board">
-        {PIPELINE_STAGES.map(stage => {
-          const sl = mine.filter(l => l.etapa === stage.id);
-          const isOver = dragOver === stage.id;
-          return (
-            <div
-              key={stage.id}
-              className="pip-col"
-              onDragOver={e => onDragOver(e, stage.id)}
-              onDrop={e => onDrop(e, stage.id)}
-              onDragLeave={() => setDragOver(null)}
-              style={{
-                transition: "background 0.15s",
-                background: isOver ? "rgba(77,255,160,0.06)" : undefined,
-                border: isOver ? "2px dashed rgba(77,255,160,0.4)" : "2px solid transparent",
-                borderRadius: 12,
-              }}
-            >
-              <div className="pip-col-head">
-                <div className="pip-dot" style={{ background: stage.color }} />
-                <div className="pip-col-title">{stage.label}</div>
-                <div className="pip-count">{sl.length}</div>
-              </div>
-              <div className="pip-body">
-                {sl.map(l => (
-                  <div
-                    key={l.id}
-                    className="pip-card"
-                    draggable
-                    onDragStart={e => onDragStart(e, l.id)}
-                    onDragEnd={onDragEnd}
-                    onClick={() => setSelected(l)}
-                    style={{ cursor: "grab", transition: "opacity 0.15s, box-shadow 0.15s", userSelect: "none" }}
-                  >
-                    {/* Grip visual */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                      <div className="pip-card-name" style={{ flex: 1 }}>{l.nombre}</div>
-                      <div
-                        title="Mover a etapa"
-                        onClick={e => { e.stopPropagation(); setMoverModal(l); }}
-                        style={{
-                          width: 24, height: 24, borderRadius: 6, background: "var(--bg4)",
-                          border: "1px solid var(--border)", display: "flex", alignItems: "center",
-                          justifyContent: "center", fontSize: 13, cursor: "pointer", flexShrink: 0, marginLeft: 6,
-                          transition: "background 0.15s",
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = "var(--verde-suave)"}
-                        onMouseLeave={e => e.currentTarget.style.background = "var(--bg4)"}
-                      >
-                        ↕
-                      </div>
-                    </div>
-                    <div className="pip-card-phone">📞 {l.telefono}</div>
-                    <div style={{ marginBottom: 5, marginTop: 4 }}>
-                      <span className={`badge ${origenColor(l.origen)}`} style={{ fontSize: 10 }}>{l.origen}</span>
-                    </div>
-                    <div className="pip-card-foot">
-                      <div className="pip-budget">{l.presupuesto}</div>
-                      <div className="pip-date">{l.ultimoContacto}</div>
-                    </div>
-                    {/* Hint drag */}
-                    <div style={{ marginTop: 6, fontSize: 10, color: "var(--text4)", display: "flex", alignItems: "center", gap: 4 }}>
-                      <span>⠿</span> Arrastrá para mover
-                    </div>
-                  </div>
-                ))}
-                {sl.length === 0 && (
-                  <div style={{
-                    padding: "24px 10px", textAlign: "center", color: "var(--text4)",
-                    fontSize: 12, border: "1px dashed var(--border)", borderRadius: 8, margin: "4px 0",
-                    transition: "border-color 0.15s",
-                    borderColor: isOver ? "rgba(77,255,160,0.5)" : undefined,
-                  }}>
-                    {isOver ? "📥 Soltar acá" : "Vacío"}
-                  </div>
-                )}
-              </div>
+      {/* ══ MOBILE: tabs por etapa + lista vertical ══ */}
+      <div className="pip-mobile">
+        {/* Selector de etapa */}
+        <div style={{ overflowX: "auto", display: "flex", gap: 6, marginBottom: 14, paddingBottom: 4 }}>
+          {PIPELINE_STAGES.map(s => {
+            const count = mine.filter(l => l.etapa === s.id).length;
+            return (
+              <button key={s.id}
+                onClick={() => setMobileEtapa(s.id)}
+                style={{
+                  flexShrink: 0, padding: "6px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                  border: `1.5px solid ${mobileEtapa === s.id ? s.color : "var(--border)"}`,
+                  background: mobileEtapa === s.id ? "rgba(38,148,95,0.12)" : "var(--bg2)",
+                  color: mobileEtapa === s.id ? "var(--text)" : "var(--text3)",
+                  cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.color }} />
+                {s.label}
+                {count > 0 && <span style={{ background: "var(--verde-principal)", color: "white", borderRadius: 8, fontSize: 10, padding: "0 5px" }}>{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {/* Leads de la etapa seleccionada */}
+        <div>
+          {mine.filter(l => l.etapa === mobileEtapa).length === 0 ? (
+            <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text4)", border: "1px dashed var(--border)", borderRadius: 10, fontSize: 13 }}>
+              Sin leads en esta etapa
             </div>
-          );
-        })}
+          ) : mine.filter(l => l.etapa === mobileEtapa).map(l => <LeadCard key={l.id} l={l} />)}
+        </div>
       </div>
 
-      {/* ---- MODAL NUEVO LEAD ---- */}
+      {/* ══ DESKTOP: grid compacto que cabe en pantalla ══ */}
+      <div className="pip-desktop">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, minHeight: "60vh" }}>
+          {PIPELINE_STAGES.map(stage => {
+            const sl = mine.filter(l => l.etapa === stage.id);
+            const isOver = dragOver === stage.id;
+            return (
+              <div key={stage.id}
+                onDragOver={e => onDragOver(e, stage.id)}
+                onDrop={e => onDrop(e, stage.id)}
+                onDragLeave={() => setDragOver(null)}
+                style={{
+                  background: isOver ? "rgba(77,255,160,0.06)" : "var(--bg2)",
+                  border: `1.5px ${isOver ? "dashed rgba(77,255,160,0.4)" : "solid var(--border)"}`,
+                  borderRadius: 10, display: "flex", flexDirection: "column", overflow: "hidden",
+                }}>
+                {/* Header columna */}
+                <div style={{ padding: "10px 10px 8px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: stage.color, flexShrink: 0 }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, flex: 1, fontFamily: "Outfit", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage.label}</div>
+                  <div style={{ background: "var(--bg4)", color: "var(--text3)", borderRadius: 8, padding: "1px 6px", fontSize: 10 }}>{sl.length}</div>
+                </div>
+                {/* Leads */}
+                <div style={{ padding: 6, flex: 1, overflowY: "auto" }}>
+                  {sl.map(l => (
+                    <div key={l.id} className="pip-card" draggable
+                      onDragStart={e => onDragStart(e, l.id)} onDragEnd={onDragEnd}
+                      onClick={() => setSelected(l)}
+                      style={{ cursor: "grab", marginBottom: 6, padding: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{l.nombre}</div>
+                        <div onClick={e => { e.stopPropagation(); setMoverModal(l); }}
+                          style={{ fontSize: 11, color: "var(--text3)", cursor: "pointer", padding: "0 2px", flexShrink: 0 }}>↕</div>
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 4 }}>📞 {l.telefono}</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span className={`badge ${origenColor(l.origen)}`} style={{ fontSize: 9, padding: "2px 5px" }}>{l.origen}</span>
+                        <span style={{ fontSize: 9, color: "var(--text4)" }}>{l.ultimoContacto}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {sl.length === 0 && (
+                    <div style={{ padding: "16px 6px", textAlign: "center", color: isOver ? "var(--verde-claro)" : "var(--text4)", fontSize: 11, border: "1px dashed var(--border)", borderRadius: 6, borderColor: isOver ? "rgba(77,255,160,0.5)" : undefined }}>
+                      {isOver ? "📥 Soltar" : "Vacío"}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {modal && <ModalLead onClose={() => setModal(false)} onSave={l => setLeads(p => [l, ...p])} vendedor={currentUser} />}
-
-      {/* ---- MODAL DETALLE / EDITAR LEAD ---- */}
       {selected && (
-        <ModalDetalleLead
-          lead={selected}
-          onClose={() => setSelected(null)}
-          onDelete={(id) => setLeads(prev => prev.filter(l => l.id !== id))}
+        <ModalDetalleLead lead={selected} onClose={() => setSelected(null)}
+          onDelete={(id) => { setLeads(prev => prev.filter(l => l.id !== id)); setSelected(null); }}
           onMove={(id, etapa) => { move(id, etapa); setSelected(s => ({ ...s, etapa })); }}
-          onSave={(updated) => {
-            setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
-            setSelected(updated);
-          }}
-        />
+          onSave={(updated) => { setLeads(prev => prev.map(l => l.id === updated.id ? updated : l)); setSelected(updated); }} />
       )}
-
-      {/* ---- MODAL MOVER ETAPA (botón ↕ dentro del ticket) ---- */}
       {moverModal && (
         <div className="overlay" onClick={() => setMoverModal(null)}>
-          <div style={{
-            background: "var(--bg2)", border: "1px solid var(--verde-border)", borderRadius: 16,
-            width: "100%", maxWidth: 420, padding: "0 0 4px",
-            boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(77,255,160,0.08)",
-          }} onClick={e => e.stopPropagation()}>
-            {/* Header */}
+          <div style={{ background: "var(--bg2)", border: "1px solid var(--verde-border)", borderRadius: 16, width: "100%", maxWidth: 420, padding: "0 0 4px", boxShadow: "0 8px 40px rgba(0,0,0,0.6)" }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: "16px 20px 14px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, fontFamily: "Outfit" }}>↕ Mover Lead</div>
@@ -1933,31 +1956,28 @@ const PipelineView = ({ leads, setLeads, currentUser }) => {
               </div>
               <div className="modal-close" onClick={() => setMoverModal(null)}>✕</div>
             </div>
-            {/* Etapa actual */}
-            <div style={{ padding: "10px 20px 6px" }}>
+            <div style={{ padding: "10px 20px 14px" }}>
               <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700 }}>Seleccioná la nueva etapa</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {PIPELINE_STAGES.map((s, idx) => {
+                {PIPELINE_STAGES.map(s => {
                   const isCurrent = moverModal.etapa === s.id;
                   return (
-                    <div
-                      key={s.id}
-                      onClick={() => !isCurrent && move(moverModal.id, s.id)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12, padding: "11px 14px",
-                        borderRadius: 10, cursor: isCurrent ? "default" : "pointer",
-                        border: `1.5px solid ${isCurrent ? s.color : "var(--border)"}`,
-                        background: isCurrent ? "rgba(38,148,95,0.08)" : "var(--bg3)",
-                        transition: "all 0.15s",
-                        opacity: isCurrent ? 1 : 0.85,
-                      }}
-                      onMouseEnter={e => { if (!isCurrent) e.currentTarget.style.background = "var(--bg4)"; }}
-                      onMouseLeave={e => { if (!isCurrent) e.currentTarget.style.background = "var(--bg3)"; }}
-                    >
-                      {/* Número de paso */}
-                      <div style={{
-                        width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
-                        background: isCurrent ? s.color : "var(--bg4)",
+                    <div key={s.id} onClick={() => !isCurrent && move(moverModal.id, s.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderRadius: 10, cursor: isCurrent ? "default" : "pointer", border: `1.5px solid ${isCurrent ? s.color : "var(--border)"}`, background: isCurrent ? "rgba(38,148,95,0.08)" : "var(--bg3)", transition: "all 0.15s" }}>
+                      <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: isCurrent ? 700 : 400, color: isCurrent ? "var(--text)" : "var(--text2)", flex: 1 }}>{s.label}</span>
+                      {isCurrent && <span style={{ fontSize: 10, color: "var(--verde-claro)", fontWeight: 700 }}>ACTUAL</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
                         border: `1.5px solid ${isCurrent ? s.color : "var(--border)"}`,
                         display: "flex", alignItems: "center", justifyContent: "center",
                         fontSize: 11, fontWeight: 700, color: isCurrent ? "#fff" : "var(--text3)",
@@ -1970,24 +1990,6 @@ const PipelineView = ({ leads, setLeads, currentUser }) => {
                         </div>
                       </div>
                       {isCurrent
-                        ? <span style={{ fontSize: 10, fontWeight: 700, color: "var(--verde-claro)", background: "var(--verde-suave)", padding: "2px 7px", borderRadius: 5, border: "1px solid var(--verde-border)" }}>Actual</span>
-                        : <span style={{ fontSize: 18, color: "var(--text4)" }}>›</span>
-                      }
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div style={{ padding: "12px 20px" }}>
-              <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setMoverModal(null)}>Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 // ============================================================
 // WHATSAPP VIEW
 // ============================================================
