@@ -573,16 +573,44 @@ const styles = `
       position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 998;
     }
     .main { margin-left: 0; padding-bottom: 72px; }
-    .topbar { position: sticky; top: 0; z-index: 100; }
+    .topbar { position: sticky; top: 0; z-index: 100; padding: 10px 14px; }
+    .topbar-left h2 { font-size: 14px; }
     .hamburger { display: flex !important; }
     .mobile-bottom-nav { display: flex !important; }
+    .page { padding: 14px 12px; }
     .fg { grid-template-columns: 1fr; }
-    .stats-row { grid-template-columns: 1fr 1fr; }
+    .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
     .detail-grid { grid-template-columns: 1fr; }
     .pipeline-board { gap: 8px; }
-    .pip-col { min-width: 260px; }
-    .modal { margin: 12px; max-height: calc(100vh - 24px); }
+    .pip-col { min-width: 240px; }
+    .modal { margin: 8px; max-height: calc(100vh - 16px); border-radius: 12px; }
+    .modal-body { padding: 16px; }
+    .ph { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+    .ph-title { font-size: 17px; }
+    .btn-full { padding: 12px; font-size: 14px; }
+    /* Ocultar tabla en mobile, mostrar cards */
+    .ventas-desktop-table { display: none !important; }
+    .ventas-mobile-list { display: block !important; }
+    /* Tabs scrollables en mobile */
+    .tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+    .pill-filters { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
+    .pill-filters::-webkit-scrollbar { display: none; }
+    /* Cards más compactas */
+    .card { padding: 14px; border-radius: 10px; }
+    .stat { padding: 14px; }
+    .stat-val { font-size: 18px; }
+    /* WA card ocupa más espacio */
+    .wa-card { max-width: 100%; }
+    /* Config view */
+    .config-tabs { flex-direction: column; }
+    /* Login card mobile */
+    .login-card { padding: 28px 20px; border-radius: 16px; margin: 12px; }
+    /* topbar avatar */
+    .topbar-avatar span { display: none; }
   }
+  /* Mostrar tabla en desktop, ocultar lista mobile */
+  .ventas-mobile-list { display: none; }
+  .ventas-desktop-table { display: block; }
   .mobile-overlay { display: none; }
   .hamburger { display: none; }
   .mobile-bottom-nav { display: none; }
@@ -924,8 +952,23 @@ const Sidebar = ({ user, active, setActive, onLogout, pendientes, mobileOpen }) 
 // ============================================================
 // MODAL NUEVA VENTA
 // ============================================================
-const ModalVenta = ({ onClose, onSave, vendedor }) => {
-  const [f, sf] = useState({ proyecto: "", zona: "", cNombre: "", cDni: "", cTel: "", cEmail: "", cDir: "", cOcup: "", reserva: "", total: "", financiado: false, cuotas: "", cuotaVal: "", anticipo: "", comisionCompartida: false, notas: "", compNombre: "" });
+const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit }) => {
+  const [f, sf] = useState(() => {
+    if (ventaEdit) {
+      return {
+        proyecto: ventaEdit.proyecto || "", zona: ventaEdit.zona || "",
+        cNombre: ventaEdit.cliente?.nombre || "", cDni: ventaEdit.cliente?.dni || "",
+        cTel: ventaEdit.cliente?.telefono || "", cEmail: ventaEdit.cliente?.email || "",
+        cDir: ventaEdit.cliente?.direccion || "", cOcup: ventaEdit.cliente?.ocupacion || "",
+        reserva: ventaEdit.montoReserva?.toString() || "", total: ventaEdit.montoTotal?.toString() || "",
+        financiado: ventaEdit.financiado || false, cuotas: ventaEdit.cuotas?.toString() || "",
+        cuotaVal: ventaEdit.valorCuota?.toString() || "", anticipo: ventaEdit.anticipo?.toString() || "",
+        comisionCompartida: ventaEdit.comisionCompartida || false,
+        notas: ventaEdit.notas || "", compNombre: ventaEdit.comprobante || "",
+      };
+    }
+    return { proyecto: "", zona: "", cNombre: "", cDni: "", cTel: "", cEmail: "", cDir: "", cOcup: "", reserva: "", total: "", financiado: false, cuotas: "", cuotaVal: "", anticipo: "", comisionCompartida: false, notas: "", compNombre: "" };
+  });
   const [errs, setErrs] = useState({});
   const [saving, setSaving] = useState(false);
   const set = (k, v) => sf(p => ({ ...p, [k]: v }));
@@ -948,7 +991,8 @@ const ModalVenta = ({ onClose, onSave, vendedor }) => {
     if (!validate()) return;
     setSaving(true);
     await new Promise(r => setTimeout(r, 600));
-    onSave({ id: uid(), vendedorId: vendedor.id, vendedorNombre: vendedor.name, fecha: today(), cliente: { nombre: f.cNombre, dni: f.cDni, telefono: f.cTel, email: f.cEmail, direccion: f.cDir, ocupacion: f.cOcup }, montoReserva: parseFloat(f.reserva), montoTotal: parseFloat(f.total), financiado: f.financiado, cuotas: f.financiado ? parseInt(f.cuotas) : null, valorCuota: f.financiado ? parseFloat(f.cuotaVal) : null, anticipo: f.financiado ? parseFloat(f.anticipo) || null : null, comision: comisionVendedor, comisionTotal: comisionTotal, comisionCompartida: f.comisionCompartida, estado: "pendiente", proyecto: f.proyecto, zona: f.zona, notas: f.notas, comprobante: f.compNombre });
+    const base = { id: ventaEdit ? ventaEdit.id : uid(), vendedorId: vendedor.id, vendedorNombre: vendedor.name, fecha: ventaEdit ? ventaEdit.fecha : today(), cliente: { nombre: f.cNombre, dni: f.cDni, telefono: f.cTel, email: f.cEmail, direccion: f.cDir, ocupacion: f.cOcup }, montoReserva: parseFloat(f.reserva), montoTotal: parseFloat(f.total), financiado: f.financiado, cuotas: f.financiado ? parseInt(f.cuotas) : null, valorCuota: f.financiado ? parseFloat(f.cuotaVal) : null, anticipo: f.financiado ? parseFloat(f.anticipo) || null : null, comision: comisionVendedor, comisionTotal: comisionTotal, comisionCompartida: f.comisionCompartida, estado: ventaEdit ? ventaEdit.estado : "pendiente", proyecto: f.proyecto, zona: f.zona, notas: f.notas, comprobante: f.compNombre };
+    onSave(base);
     setSaving(false); onClose();
   };
 
@@ -956,7 +1000,7 @@ const ModalVenta = ({ onClose, onSave, vendedor }) => {
     <div className="overlay">
       <div className="modal" style={{ maxWidth: 700 }}>
         <div className="modal-head">
-          <div className="modal-title">💰 Cargar Nueva Venta</div>
+          <div className="modal-title">💰 {ventaEdit ? "Editar Venta" : "Cargar Nueva Venta"}</div>
           <div className="modal-close" onClick={onClose}>✕</div>
         </div>
         <div className="modal-body">
@@ -1346,11 +1390,15 @@ const Dashboard = ({ ventas, gastos, leads, users }) => {
 const VentasView = ({ ventas, setVentas, currentUser }) => {
   const [modal, setModal] = useState(false);
   const [detalle, setDetalle] = useState(null);
+  const [editando, setEditando] = useState(null);
   const [filtro, setFiltro] = useState("todos");
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const myVentas = currentUser.role === "admin" ? ventas : ventas.filter(v => v.vendedorId === currentUser.id);
   const filtered = filtro === "todos" ? myVentas : myVentas.filter(v => v.estado === filtro);
   const totalComision = myVentas.reduce((s, v) => s + v.comision, 0);
   const updateEstado = (id, estado) => setVentas(prev => prev.map(v => v.id === id ? { ...v, estado } : v));
+  const deleteVenta = (id) => { setVentas(prev => prev.filter(v => v.id !== id)); setConfirmDelete(null); };
+  const canEdit = (v) => currentUser.role === "admin" || (v.vendedorId === currentUser.id && v.estado === "pendiente");
   return (
     <div>
       <div className="ph">
@@ -1373,7 +1421,48 @@ const VentasView = ({ ventas, setVentas, currentUser }) => {
           </button>
         ))}
       </div>
-      <div className="card">
+
+      {/* Mobile: cards en lugar de tabla */}
+      <div className="ventas-mobile-list">
+        {filtered.length === 0 ? (
+          <div className="empty"><div className="empty-icon">💰</div><p>{currentUser.role === "vendedor" ? "Cargá tu primera venta" : "Sin ventas"}</p></div>
+        ) : filtered.map(v => (
+          <div key={v.id} className="card" style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{v.cliente?.nombre}</div>
+                <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>{v.proyecto} · {v.fecha}</div>
+                {currentUser.role === "admin" && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>👤 {v.vendedorNombre}</div>}
+              </div>
+              <span className={`badge ${v.estado === "aprobada" ? "b-cyan" : v.estado === "rechazada" ? "b-red" : "b-yellow"}`}>{v.estado}</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+              <div style={{ background: "var(--bg3)", borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 2 }}>TOTAL</div>
+                <div style={{ fontWeight: 700, color: "var(--cyan)" }}>{formatUSD(v.montoTotal)}</div>
+              </div>
+              <div style={{ background: "var(--bg3)", borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 2 }}>COMISIÓN</div>
+                <div style={{ fontWeight: 700, color: "var(--verde-claro)" }}>{formatUSD(v.comision)}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button className="btn btn-sm btn-ghost" onClick={() => setDetalle(v)}>👁 Ver</button>
+              {canEdit(v) && <button className="btn btn-sm btn-ghost" onClick={() => setEditando(v)}>✏️ Editar</button>}
+              {(currentUser.role === "admin" || v.vendedorId === currentUser.id) && (
+                <button className="btn btn-sm btn-danger" onClick={() => setConfirmDelete(v.id)}>🗑</button>
+              )}
+              {v.estado === "pendiente" && currentUser.role === "admin" && <>
+                <button className="btn btn-sm btn-success" onClick={() => updateEstado(v.id, "aprobada")}>✓ Aprobar</button>
+                <button className="btn btn-sm btn-danger" onClick={() => updateEstado(v.id, "rechazada")}>✗ Rechazar</button>
+              </>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: tabla */}
+      <div className="ventas-desktop-table card">
         <div className="table-wrap">
           <table>
             <thead><tr>
@@ -1398,6 +1487,10 @@ const VentasView = ({ ventas, setVentas, currentUser }) => {
                   <td>
                     <div style={{ display: "flex", gap: 5 }}>
                       <button className="btn btn-sm btn-ghost" onClick={() => setDetalle(v)}>Ver</button>
+                      {canEdit(v) && <button className="btn btn-sm btn-ghost" onClick={() => setEditando(v)}>✏️</button>}
+                      {(currentUser.role === "admin" || v.vendedorId === currentUser.id) && (
+                        <button className="btn btn-sm btn-danger" onClick={() => setConfirmDelete(v.id)}>🗑</button>
+                      )}
                       {v.estado === "pendiente" && currentUser.role === "admin" && <>
                         <button className="btn btn-sm btn-success" onClick={() => updateEstado(v.id, "aprobada")}>✓</button>
                         <button className="btn btn-sm btn-danger" onClick={() => updateEstado(v.id, "rechazada")}>✗</button>
@@ -1410,7 +1503,25 @@ const VentasView = ({ ventas, setVentas, currentUser }) => {
           </table>
         </div>
       </div>
+
+      {/* Modal confirmar borrar */}
+      {confirmDelete && (
+        <div className="overlay">
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-head"><span className="modal-title">🗑 Eliminar venta</span></div>
+            <div className="modal-body" style={{ textAlign: "center" }}>
+              <p style={{ color: "var(--text2)", marginBottom: 20 }}>¿Estás seguro? Esta acción no se puede deshacer.</p>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>Cancelar</button>
+                <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => deleteVenta(confirmDelete)}>Sí, eliminar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modal && <ModalVenta onClose={() => setModal(false)} onSave={v => setVentas(p => [v, ...p])} vendedor={currentUser} />}
+      {editando && <ModalVenta onClose={() => setEditando(null)} onSave={v => { setVentas(p => p.map(x => x.id === v.id ? v : x)); setEditando(null); }} vendedor={currentUser} ventaEdit={editando} />}
       {detalle && <ModalDetalleVenta v={detalle} onClose={() => setDetalle(null)} onUpdate={updateEstado} />}
     </div>
   );
@@ -1476,7 +1587,7 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
 // ============================================================
 // MODAL DETALLE + EDITAR LEAD
 // ============================================================
-const ModalDetalleLead = ({ lead, onClose, onMove, onSave }) => {
+const ModalDetalleLead = ({ lead, onClose, onMove, onSave, onDelete }) => {
   const [modo, setModo] = useState("ver"); // "ver" | "editar"
   const [f, setF] = useState({ ...lead });
   const [errs, setErrs] = useState({});
@@ -1587,6 +1698,7 @@ const ModalDetalleLead = ({ lead, onClose, onMove, onSave }) => {
                 })}
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                <button className="btn btn-danger btn-sm" onClick={() => { if(window.confirm("¿Eliminar este lead?")) { onDelete(lead.id); onClose(); } }}>🗑 Eliminar</button>
                 <button className="btn btn-ghost" onClick={onClose} style={{ flex: 1 }}>Cerrar</button>
                 <button className="btn btn-primary" onClick={() => setModo("editar")} style={{ flex: 2 }}>✏️ Editar Lead</button>
               </div>
@@ -1796,6 +1908,7 @@ const PipelineView = ({ leads, setLeads, currentUser }) => {
         <ModalDetalleLead
           lead={selected}
           onClose={() => setSelected(null)}
+          onDelete={(id) => setLeads(prev => prev.filter(l => l.id !== id))}
           onMove={(id, etapa) => { move(id, etapa); setSelected(s => ({ ...s, etapa })); }}
           onSave={(updated) => {
             setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
