@@ -73,6 +73,9 @@ async function startSession(vendedorId, socketClient) {
     auth: state,
     browser: ["Cristal CRM", "Chrome", "1.0.0"],
     generateHighQualityLinkPreview: false,
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    getMessage: async () => undefined,
   });
 
   sessions[vendedorId].sock = sock;
@@ -296,7 +299,12 @@ app.get("/api/sessions/:vendedorId", (req, res) => {
 // ════════════════════════════════════════════════════════════
 // INICIAR SERVIDOR
 // ════════════════════════════════════════════════════════════
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
+
+// Liberar memoria periódicamente
+setInterval(() => {
+  if (global.gc) global.gc();
+}, 30000);
 
 server.listen(PORT, async () => {
   console.log(`\n🚀 Cristal WhatsApp Server corriendo en puerto ${PORT}`);
