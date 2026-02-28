@@ -3101,58 +3101,143 @@ export default function CristalCRM() {
   const [active, setActive] = useState(null);
   const [users, setUsers] = useState([]);
   
-  // LocalStorage persistence para datos
-  const [ventas, setVentas] = useState(() => {
-    const saved = localStorage.getItem('cristal_ventas');
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  const [gastos, setGastos] = useState(() => {
-    const saved = localStorage.getItem('cristal_gastos');
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  const [leads, setLeads] = useState(() => {
-    const saved = localStorage.getItem('cristal_leads');
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  const [hojas, setHojas] = useState(() => {
-    const saved = localStorage.getItem('cristal_hojas');
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  const [apiKey, setApiKey] = useState(() => {
-    return localStorage.getItem('cristal_apiKey') || "";
-  });
-  
-  const [waConnected, setWaConnected] = useState(() => {
-    return localStorage.getItem('cristal_waConnected') === 'true';
-  });
-
+  // ── Datos sincronizados con Firestore ──────────────────────
+  const [ventas, setVentasLocal] = useState([]);
+  const [gastos, setGastosLocal] = useState([]);
+  const [leads, setLeadsLocal] = useState([]);
+  const [hojas, setHojasLocal] = useState([]);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('cristal_apiKey') || "");
+  const [waConnected, setWaConnected] = useState(false);
+  const [dbLoaded, setDbLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Persistir cambios en localStorage
-  useEffect(() => { localStorage.setItem('cristal_ventas', JSON.stringify(ventas)); }, [ventas]);
-  useEffect(() => { localStorage.setItem('cristal_gastos', JSON.stringify(gastos)); }, [gastos]);
-  useEffect(() => { localStorage.setItem('cristal_leads', JSON.stringify(leads)); }, [leads]);
-  useEffect(() => { localStorage.setItem('cristal_hojas', JSON.stringify(hojas)); }, [hojas]);
   useEffect(() => { localStorage.setItem('cristal_apiKey', apiKey); }, [apiKey]);
-  useEffect(() => { localStorage.setItem('cristal_waConnected', waConnected.toString()); }, [waConnected]);
 
-  // Guardar sesión del usuario al hacer login
+  // ── Guardar sesión del usuario ──────────────────────────────
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('cristal_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('cristal_user');
-    }
+    if (user) localStorage.setItem('cristal_user', JSON.stringify(user));
+    else localStorage.removeItem('cristal_user');
   }, [user]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('cristal_user');
-    setUser(null);
-  };
+  const handleLogout = () => { localStorage.removeItem('cristal_user'); setUser(null); };
+
+  // ── Suscripción en tiempo real a Firestore ──────────────────
+  useEffect(() => {
+    if (!user) return;
+    let unsubs = [];
+    const setup = async () => {
+      const fb = await loadFirebase();
+      const db = fb.db;
+
+      // Helper para suscribirse a una colección y filtrar por vendedor si no es admin
+      const sub = (col, setter) => {
+        let q = db.collection(col);
+        // vendedor solo ve sus propios datos
+        if (user.role !== "admin") q = q.where("vendedorId", "==", user.id);
+        return q.onSnapshot(snap => {
+          setter(snap.docs.map(d => ({ ...d.data(), _docId: d.id })));
+        }, err => console.error(`Error ${col}:`, err));
+      };
+
+      unsubs.push(sub("ventas",  setVentasLocal));
+      unsubs.push(sub("gastos",  setGastosLocal));
+      unsubs.push(sub("leads",   setLeadsLocal));
+      unsubs.push(sub("hojas",   setHojasLocal));
+      setDbLoaded(true);
+    };
+    setup();
+    return () => unsubs.forEach(u => u && u());
+  }, [user]);
+
+  // ── Helpers Firestore simples ───────────────────────────────
+  const fsAdd = useCallback(async (col, data) => {
+    const fb = await loadFirebase();
+    const { _docId, ...clean } = data;
+    await fb.db.collection(col).add(clean);
+  }, []);
+
+  const fsUpdate = useCallback(async (col, id, data) => {
+    const fb = await loadFirebase();
+    const snap = await fb.db.collection(col).where("id", "==", id).get();
+    const { _docId, ...clean } = data;
+    snap.forEach(d => d.ref.set(clean));
+  }, []);
+
+  const fsDelete = useCallback(async (col, id) => {
+    const fb = await loadFirebase();
+    const snap = await fb.db.collection(col).where("id", "==", id).get();
+    snap.forEach(d => d.ref.delete());
+  }, []);
+
+  // Wrappers compatibles con el patrón setState existente
+  const setVentas = useCallback((updater) => {
+    setVentasLocal(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      // Detectar diferencias y escribir en Firestore
+      const prevIds = new Set(prev.map(v => v.id));
+      const nextIds = new Set(next.map(v => v.id));
+      next.forEach(v => {
+        if (!prevIds.has(v.id)) fsAdd("ventas", v);
+        else {
+          const old = prev.find(x => x.id === v.id);
+          if (JSON.stringify(old) !== JSON.stringify(v)) fsUpdate("ventas", v.id, v);
+        }
+      });
+      prev.forEach(v => { if (!nextIds.has(v.id)) fsDelete("ventas", v.id); });
+      return next;
+    });
+  }, [fsAdd, fsUpdate, fsDelete]);
+
+  const setGastos = useCallback((updater) => {
+    setGastosLocal(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const prevIds = new Set(prev.map(g => g.id));
+      const nextIds = new Set(next.map(g => g.id));
+      next.forEach(g => {
+        if (!prevIds.has(g.id)) fsAdd("gastos", g);
+        else {
+          const old = prev.find(x => x.id === g.id);
+          if (JSON.stringify(old) !== JSON.stringify(g)) fsUpdate("gastos", g.id, g);
+        }
+      });
+      prev.forEach(g => { if (!nextIds.has(g.id)) fsDelete("gastos", g.id); });
+      return next;
+    });
+  }, [fsAdd, fsUpdate, fsDelete]);
+
+  const setLeads = useCallback((updater) => {
+    setLeadsLocal(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const prevIds = new Set(prev.map(l => l.id));
+      const nextIds = new Set(next.map(l => l.id));
+      next.forEach(l => {
+        if (!prevIds.has(l.id)) fsAdd("leads", l);
+        else {
+          const old = prev.find(x => x.id === l.id);
+          if (JSON.stringify(old) !== JSON.stringify(l)) fsUpdate("leads", l.id, l);
+        }
+      });
+      prev.forEach(l => { if (!nextIds.has(l.id)) fsDelete("leads", l.id); });
+      return next;
+    });
+  }, [fsAdd, fsUpdate, fsDelete]);
+
+  const setHojas = useCallback((updater) => {
+    setHojasLocal(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const prevIds = new Set(prev.map(h => h.id));
+      const nextIds = new Set(next.map(h => h.id));
+      next.forEach(h => {
+        if (!prevIds.has(h.id)) fsAdd("hojas", h);
+        else {
+          const old = prev.find(x => x.id === h.id);
+          if (JSON.stringify(old) !== JSON.stringify(h)) fsUpdate("hojas", h.id, h);
+        }
+      });
+      prev.forEach(h => { if (!nextIds.has(h.id)) fsDelete("hojas", h.id); });
+      return next;
+    });
+  }, [fsAdd, fsUpdate, fsDelete]);
 
   // Cargar todos los usuarios desde Firestore cuando el admin inicia sesión
   useEffect(() => {
@@ -3191,6 +3276,15 @@ export default function CristalCRM() {
   if (user.role === "vendedor" && user.status !== "activo") {
     return <><style>{styles}</style><CuentaPendiente user={user} onLogout={handleLogout} /></>;
   }
+
+  // Mientras carga Firestore mostrar spinner
+  if (!dbLoaded) return (
+    <><style>{styles}</style>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", flexDirection: "column", gap: 16 }}>
+      <div style={{ width: 44, height: 44, border: "3px solid var(--verde-border)", borderTopColor: "var(--verde-claro)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ color: "var(--text3)", fontFamily: "Outfit", fontSize: 14 }}>Cargando datos...</div>
+    </div></>
+  );
 
   const pendientes = ventas.filter(v => v.estado === "pendiente").length;
   // Pendientes de aprobación de cuentas (para badge en config)
