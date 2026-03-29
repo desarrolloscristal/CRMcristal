@@ -959,7 +959,17 @@ const Sidebar = ({ user, active, setActive, onLogout, pendientes, mobileOpen }) 
 // ============================================================
 // MODAL NUEVA VENTA
 // ============================================================
-const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit }) => {
+const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
+  // Si el que carga es admin, puede elegir vendedor. Por default el propio admin o el vendedor del edit
+  const vendedoresDisponibles = vendedor.role === "admin" && users.length > 0
+    ? users.filter(u => u.role === "vendedor" && u.status === "activo")
+    : [];
+  const [vendedorSel, setVendedorSel] = useState(() => {
+    if (ventaEdit) return { id: ventaEdit.vendedorId, name: ventaEdit.vendedorNombre };
+    if (vendedor.role !== "admin") return vendedor;
+    return vendedoresDisponibles[0] || vendedor;
+  });
+
   const [f, sf] = useState(() => {
     if (ventaEdit) {
       return {
@@ -998,7 +1008,9 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit }) => {
     if (!validate()) return;
     setSaving(true);
     await new Promise(r => setTimeout(r, 600));
-    const base = { id: ventaEdit ? ventaEdit.id : uid(), vendedorId: vendedor.id, vendedorNombre: vendedor.name, fecha: ventaEdit ? ventaEdit.fecha : today(), cliente: { nombre: f.cNombre, dni: f.cDni, telefono: f.cTel, email: f.cEmail, direccion: f.cDir, ocupacion: f.cOcup }, montoReserva: parseFloat(f.reserva), montoTotal: parseFloat(f.total), financiado: f.financiado, cuotas: f.financiado ? parseInt(f.cuotas) : null, valorCuota: f.financiado ? parseFloat(f.cuotaVal) : null, anticipo: f.financiado ? parseFloat(f.anticipo) || null : null, comision: comisionVendedor, comisionTotal: comisionTotal, comisionCompartida: f.comisionCompartida, estado: ventaEdit ? ventaEdit.estado : "pendiente", proyecto: f.proyecto, zona: f.zona, notas: f.notas, comprobante: f.compNombre };
+    // Usar el vendedor seleccionado (sea admin eligiendo o vendedor propio)
+    const vend = vendedorSel || vendedor;
+    const base = { id: ventaEdit ? ventaEdit.id : uid(), vendedorId: vend.id, vendedorNombre: vend.name, fecha: ventaEdit ? ventaEdit.fecha : today(), cliente: { nombre: f.cNombre, dni: f.cDni, telefono: f.cTel, email: f.cEmail, direccion: f.cDir, ocupacion: f.cOcup }, montoReserva: parseFloat(f.reserva), montoTotal: parseFloat(f.total), financiado: f.financiado, cuotas: f.financiado ? parseInt(f.cuotas) : null, valorCuota: f.financiado ? parseFloat(f.cuotaVal) : null, anticipo: f.financiado ? parseFloat(f.anticipo) || null : null, comision: comisionVendedor, comisionTotal: comisionTotal, comisionCompartida: f.comisionCompartida, estado: ventaEdit ? ventaEdit.estado : "pendiente", proyecto: f.proyecto, zona: f.zona, notas: f.notas, comprobante: f.compNombre };
     onSave(base);
     setSaving(false); onClose();
   };
@@ -1011,6 +1023,26 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit }) => {
           <div className="modal-close" onClick={onClose}>✕</div>
         </div>
         <div className="modal-body">
+          {/* Selector de vendedor — solo para admin */}
+          {vendedor.role === "admin" && vendedoresDisponibles.length > 0 && (
+            <div style={{ background: "rgba(38,148,95,0.08)", border: "1px solid var(--verde-border)", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ color: "var(--verde-claro)", fontWeight: 700 }}>👤 Vendedor asignado a esta venta</label>
+                <select className="form-select" value={vendedorSel?.id || ""}
+                  onChange={e => {
+                    const u = vendedoresDisponibles.find(v => v.id === e.target.value) || vendedoresDisponibles.find(v => v.email === e.target.value);
+                    if (u) setVendedorSel({ id: u.id || u.email, name: u.name || u.nombre || u.email });
+                  }}>
+                  {vendedoresDisponibles.map(u => (
+                    <option key={u.id || u.email} value={u.id || u.email}>
+                      {u.name || u.nombre || u.email} — {u.zona || "Sin zona"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
           <div className="section-sep">Proyecto</div>
           <div className="fg">
             <div className="form-group"><label className="form-label">Proyecto / Desarrollo *</label><input className={`form-input ${errs.proyecto ? "err" : ""}`} placeholder="Torres del Sur I" value={f.proyecto} onChange={e => set("proyecto", e.target.value)} /></div>
@@ -1394,7 +1426,7 @@ const Dashboard = ({ ventas, gastos, leads, users }) => {
 // ============================================================
 // VENTAS VIEW
 // ============================================================
-const VentasView = ({ ventas, setVentas, currentUser }) => {
+const VentasView = ({ ventas, setVentas, currentUser, users = [] }) => {
   const [modal, setModal] = useState(false);
   const [detalle, setDetalle] = useState(null);
   const [editando, setEditando] = useState(null);
@@ -1527,8 +1559,8 @@ const VentasView = ({ ventas, setVentas, currentUser }) => {
         </div>
       )}
 
-      {modal && <ModalVenta onClose={() => setModal(false)} onSave={v => setVentas(p => [v, ...p])} vendedor={currentUser} />}
-      {editando && <ModalVenta onClose={() => setEditando(null)} onSave={v => { setVentas(p => p.map(x => x.id === v.id ? v : x)); setEditando(null); }} vendedor={currentUser} ventaEdit={editando} />}
+      {modal && <ModalVenta onClose={() => setModal(false)} onSave={v => setVentas(p => [v, ...p])} vendedor={currentUser} users={users} />}
+      {editando && <ModalVenta onClose={() => setEditando(null)} onSave={v => { setVentas(p => p.map(x => x.id === v.id ? v : x)); setEditando(null); }} vendedor={currentUser} ventaEdit={editando} users={users} />}
       {detalle && <ModalDetalleVenta v={detalle} onClose={() => setDetalle(null)} onUpdate={updateEstado} />}
     </div>
   );
@@ -3330,13 +3362,13 @@ export default function CristalCRM() {
   const renderPage = () => {
     switch (active) {
       case "dashboard": return <Dashboard ventas={ventas} gastos={gastos} leads={leads} users={users} />;
-      case "ventas": return <VentasView ventas={ventas} setVentas={setVentas} currentUser={user} />;
+      case "ventas": return <VentasView ventas={ventas} setVentas={setVentas} currentUser={user} users={users} />;
       case "gastos": return <GastosView gastos={gastos} setGastos={setGastos} currentUser={user} apiKey={apiKey} />;
       case "pipeline": return <PipelineView leads={leads} setLeads={setLeads} currentUser={user} />;
       case "vendedores": return <VendedoresView ventas={ventas} gastos={gastos} leads={leads} users={users} />;
       case "config": return <ConfigView apiKey={apiKey} setApiKey={setApiKey} users={users} onUpdateUserStatus={handleUpdateUserStatus} />;
       case "resumen": return <ResumenView ventas={ventas} gastos={gastos} leads={leads} user={user} setVentas={setVentas} />;
-      case "mis-ventas": return <VentasView ventas={ventas} setVentas={setVentas} currentUser={user} />;
+      case "mis-ventas": return <VentasView ventas={ventas} setVentas={setVentas} currentUser={user} users={users} />;
       case "mis-gastos": return <GastosView gastos={gastos} setGastos={setGastos} currentUser={user} apiKey={apiKey} />;
       case "whatsapp": return <WAView currentUser={user} setLeads={setLeads} />;
       case "documentacion": return <DocumentacionView currentUser={user} hojas={hojas} setHojas={setHojas} />;
