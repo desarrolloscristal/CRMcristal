@@ -3149,95 +3149,93 @@ export default function CristalCRM() {
     return () => unsubs.forEach(u => u && u());
   }, [user]);
 
-  // ── Helpers Firestore simples ───────────────────────────────
-  const fsAdd = useCallback(async (col, data) => {
-    const fb = await loadFirebase();
-    const { _docId, ...clean } = data;
-    await fb.db.collection(col).add(clean);
+  // ══════════════════════════════════════════════════════════════
+  // FIRESTORE WRITE HELPERS
+  // Patrón: escribir directo a Firestore → onSnapshot actualiza el estado local automáticamente
+  // NO actualizar el estado local manualmente para evitar doble escritura
+  // ══════════════════════════════════════════════════════════════
+
+  // Escribir (add o update) un documento por campo "id"
+  const fsSave = useCallback(async (col, data) => {
+    try {
+      const fb = await loadFirebase();
+      const { _docId, ...clean } = data;
+      // Buscar si ya existe por id de negocio
+      const snap = await fb.db.collection(col).where("id", "==", clean.id).get();
+      if (snap.empty) {
+        await fb.db.collection(col).add(clean);
+      } else {
+        await snap.docs[0].ref.set(clean);
+      }
+    } catch (e) { console.error(`fsSave ${col}:`, e); }
   }, []);
 
-  const fsUpdate = useCallback(async (col, id, data) => {
-    const fb = await loadFirebase();
-    const snap = await fb.db.collection(col).where("id", "==", id).get();
-    const { _docId, ...clean } = data;
-    snap.forEach(d => d.ref.set(clean));
+  const fsRemove = useCallback(async (col, id) => {
+    try {
+      const fb = await loadFirebase();
+      const snap = await fb.db.collection(col).where("id", "==", id).get();
+      snap.forEach(d => d.ref.delete());
+    } catch (e) { console.error(`fsRemove ${col}:`, e); }
   }, []);
 
-  const fsDelete = useCallback(async (col, id) => {
-    const fb = await loadFirebase();
-    const snap = await fb.db.collection(col).where("id", "==", id).get();
-    snap.forEach(d => d.ref.delete());
-  }, []);
-
-  // Wrappers compatibles con el patrón setState existente
+  // ── setVentas: detecta diff y escribe solo lo necesario en Firestore ──
   const setVentas = useCallback((updater) => {
     setVentasLocal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      // Detectar diferencias y escribir en Firestore
-      const prevIds = new Set(prev.map(v => v.id));
-      const nextIds = new Set(next.map(v => v.id));
+      const prevMap = new Map(prev.map(v => [v.id, v]));
+      const nextMap = new Map(next.map(v => [v.id, v]));
+      // Nuevos o modificados → guardar
       next.forEach(v => {
-        if (!prevIds.has(v.id)) fsAdd("ventas", v);
-        else {
-          const old = prev.find(x => x.id === v.id);
-          if (JSON.stringify(old) !== JSON.stringify(v)) fsUpdate("ventas", v.id, v);
-        }
+        const old = prevMap.get(v.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(v)) fsSave("ventas", v);
       });
-      prev.forEach(v => { if (!nextIds.has(v.id)) fsDelete("ventas", v.id); });
+      // Eliminados
+      prev.forEach(v => { if (!nextMap.has(v.id)) fsRemove("ventas", v.id); });
       return next;
     });
-  }, [fsAdd, fsUpdate, fsDelete]);
+  }, [fsSave, fsRemove]);
 
   const setGastos = useCallback((updater) => {
     setGastosLocal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      const prevIds = new Set(prev.map(g => g.id));
-      const nextIds = new Set(next.map(g => g.id));
+      const prevMap = new Map(prev.map(g => [g.id, g]));
+      const nextMap = new Map(next.map(g => [g.id, g]));
       next.forEach(g => {
-        if (!prevIds.has(g.id)) fsAdd("gastos", g);
-        else {
-          const old = prev.find(x => x.id === g.id);
-          if (JSON.stringify(old) !== JSON.stringify(g)) fsUpdate("gastos", g.id, g);
-        }
+        const old = prevMap.get(g.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(g)) fsSave("gastos", g);
       });
-      prev.forEach(g => { if (!nextIds.has(g.id)) fsDelete("gastos", g.id); });
+      prev.forEach(g => { if (!nextMap.has(g.id)) fsRemove("gastos", g.id); });
       return next;
     });
-  }, [fsAdd, fsUpdate, fsDelete]);
+  }, [fsSave, fsRemove]);
 
   const setLeads = useCallback((updater) => {
     setLeadsLocal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      const prevIds = new Set(prev.map(l => l.id));
-      const nextIds = new Set(next.map(l => l.id));
+      const prevMap = new Map(prev.map(l => [l.id, l]));
+      const nextMap = new Map(next.map(l => [l.id, l]));
       next.forEach(l => {
-        if (!prevIds.has(l.id)) fsAdd("leads", l);
-        else {
-          const old = prev.find(x => x.id === l.id);
-          if (JSON.stringify(old) !== JSON.stringify(l)) fsUpdate("leads", l.id, l);
-        }
+        const old = prevMap.get(l.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(l)) fsSave("leads", l);
       });
-      prev.forEach(l => { if (!nextIds.has(l.id)) fsDelete("leads", l.id); });
+      prev.forEach(l => { if (!nextMap.has(l.id)) fsRemove("leads", l.id); });
       return next;
     });
-  }, [fsAdd, fsUpdate, fsDelete]);
+  }, [fsSave, fsRemove]);
 
   const setHojas = useCallback((updater) => {
     setHojasLocal(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      const prevIds = new Set(prev.map(h => h.id));
-      const nextIds = new Set(next.map(h => h.id));
+      const prevMap = new Map(prev.map(h => [h.id, h]));
+      const nextMap = new Map(next.map(h => [h.id, h]));
       next.forEach(h => {
-        if (!prevIds.has(h.id)) fsAdd("hojas", h);
-        else {
-          const old = prev.find(x => x.id === h.id);
-          if (JSON.stringify(old) !== JSON.stringify(h)) fsUpdate("hojas", h.id, h);
-        }
+        const old = prevMap.get(h.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(h)) fsSave("hojas", h);
       });
-      prev.forEach(h => { if (!nextIds.has(h.id)) fsDelete("hojas", h.id); });
+      prev.forEach(h => { if (!nextMap.has(h.id)) fsRemove("hojas", h.id); });
       return next;
     });
-  }, [fsAdd, fsUpdate, fsDelete]);
+  }, [fsSave, fsRemove]);
 
   // Cargar todos los usuarios desde Firestore cuando el admin inicia sesión
   useEffect(() => {
