@@ -3129,6 +3129,38 @@ export default function CristalCRM() {
       const fb = await loadFirebase();
       const db = fb.db;
 
+      // ── MIGRACIÓN: subir datos viejos de localStorage a Firestore ──
+      const migrateCollection = async (lsKey, col) => {
+        const raw = localStorage.getItem(lsKey);
+        if (!raw) return;
+        try {
+          const items = JSON.parse(raw);
+          if (!Array.isArray(items) || items.length === 0) return;
+          console.log(`Migrando ${items.length} registros de ${lsKey} a Firestore...`);
+          for (const item of items) {
+            if (!item.id) continue;
+            // Solo migrar si no existe ya en Firestore
+            const snap = await db.collection(col).where("id", "==", item.id).get();
+            if (snap.empty) {
+              const { _docId, ...clean } = item;
+              await db.collection(col).add(clean);
+              console.log(`  ✅ Migrado: ${col}/${item.id}`);
+            }
+          }
+          // Limpiar localStorage después de migrar
+          localStorage.removeItem(lsKey);
+          console.log(`✅ Migración de ${col} completa`);
+        } catch (e) {
+          console.error(`Error migrando ${lsKey}:`, e);
+        }
+      };
+
+      // Migrar todas las colecciones del localStorage viejo
+      await migrateCollection('cristal_ventas', 'ventas');
+      await migrateCollection('cristal_gastos', 'gastos');
+      await migrateCollection('cristal_leads', 'leads');
+      await migrateCollection('cristal_hojas', 'hojas');
+
       // Helper para suscribirse a una colección y filtrar por vendedor si no es admin
       const sub = (col, setter) => {
         let q = db.collection(col);
