@@ -2015,7 +2015,8 @@ const PipelineView = ({ leads, setLeads, currentUser }) => {
 // WHATSAPP VIEW
 // ============================================================
 // URL del servidor WhatsApp en Railway
-const WA_SERVER_URL = "https://crmcristal-production.up.railway.app";
+// URL del servidor WhatsApp — se configura según el entorno
+const WA_SERVER_URL = import.meta.env?.VITE_WA_SERVER_URL || "https://crmcristal.onrender.com";
 
 const WAView = ({ currentUser, setLeads }) => {
   const [status, setStatus] = useState("disconnected");
