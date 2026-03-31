@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: cristal-whatsapp-server
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: CRM_ORIGIN
+        value: https://crm.cristaldesarrollos.com
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: sessions
+      mountPath: /opt/render/project/src/sessions
+      sizeGB: 1
