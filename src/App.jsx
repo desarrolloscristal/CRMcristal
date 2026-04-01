@@ -960,9 +960,12 @@ const Sidebar = ({ user, active, setActive, onLogout, pendientes, mobileOpen }) 
 // MODAL NUEVA VENTA
 // ============================================================
 const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
-  // Si el que carga es admin, puede elegir vendedor. Por default el propio admin o el vendedor del edit
-  const vendedoresDisponibles = vendedor.role === "admin" && users.length > 0
-    ? users.filter(u => u.role === "vendedor" && u.status === "activo")
+  // Admin puede asignar la venta a cualquier vendedor activo O a sí mismo
+  const vendedoresDisponibles = vendedor.role === "admin"
+    ? [
+        { id: vendedor.id, name: vendedor.name, email: vendedor.email, zona: "Admin", _esAdmin: true },
+        ...users.filter(u => u.role === "vendedor" && u.status === "activo")
+      ]
     : [];
   const [vendedorSel, setVendedorSel] = useState(() => {
     if (ventaEdit) return { id: ventaEdit.vendedorId, name: ventaEdit.vendedorNombre };
@@ -1027,15 +1030,15 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
           {vendedor.role === "admin" && vendedoresDisponibles.length > 0 && (
             <div style={{ background: "rgba(38,148,95,0.08)", border: "1px solid var(--verde-border)", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ color: "var(--verde-claro)", fontWeight: 700 }}>👤 Vendedor asignado a esta venta</label>
+                <label className="form-label" style={{ color: "var(--verde-claro)", fontWeight: 700 }}>👤 Asignar venta a</label>
                 <select className="form-select" value={vendedorSel?.id || ""}
                   onChange={e => {
-                    const u = vendedoresDisponibles.find(v => v.id === e.target.value) || vendedoresDisponibles.find(v => v.email === e.target.value);
+                    const u = vendedoresDisponibles.find(v => v.id === e.target.value || v.email === e.target.value);
                     if (u) setVendedorSel({ id: u.id || u.email, name: u.name || u.nombre || u.email });
                   }}>
                   {vendedoresDisponibles.map(u => (
                     <option key={u.id || u.email} value={u.id || u.email}>
-                      {u.name || u.nombre || u.email} — {u.zona || "Sin zona"}
+                      {u._esAdmin ? `👑 ${u.name} (yo — Admin)` : `${u.name || u.nombre || u.email} — ${u.zona || "Sin zona"}`}
                     </option>
                   ))}
                 </select>
@@ -1442,17 +1445,20 @@ const VentasView = ({ ventas, setVentas, currentUser, users = [] }) => {
     <div>
       <div className="ph">
         <div className="ph-title">{currentUser.role === "admin" ? "Gestión de Ventas" : "Mis Ventas"}</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {currentUser.role === "vendedor" && <button className="btn btn-primary" onClick={() => setModal(true)}>+ Cargar Venta</button>}
-        </div>
+        <button className="btn btn-primary" onClick={() => setModal(true)}>+ Cargar Venta</button>
       </div>
-      {currentUser.role === "vendedor" && (
-        <div className="stats-row" style={{ marginBottom: 20 }}>
+      <div className="stats-row" style={{ marginBottom: 20 }}>
+        {currentUser.role === "admin" ? <>
+          <div className="stat c-cyan"><div className="stat-label">Total Comisiones</div><div className="stat-val">{formatUSD(myVentas.reduce((s,v) => s + (v.comision||0), 0))}</div></div>
+          <div className="stat c-verde"><div className="stat-label">Aprobadas</div><div className="stat-val">{myVentas.filter(v => v.estado === "aprobada").length}</div></div>
+          <div className="stat c-yellow"><div className="stat-label">Pendientes</div><div className="stat-val">{myVentas.filter(v => v.estado === "pendiente").length}</div></div>
+          <div className="stat c-silver"><div className="stat-label">Total Vendido</div><div className="stat-val">{formatUSD(myVentas.reduce((s,v) => s + (v.montoTotal||0), 0))}</div></div>
+        </> : <>
           <div className="stat c-cyan"><div className="stat-label">Mis Comisiones</div><div className="stat-val">{formatUSD(totalComision)}</div></div>
           <div className="stat c-verde"><div className="stat-label">Aprobadas</div><div className="stat-val">{myVentas.filter(v => v.estado === "aprobada").length}</div></div>
           <div className="stat c-silver"><div className="stat-label">Total Vendido</div><div className="stat-val">{formatUSD(myVentas.reduce((s, v) => s + v.montoTotal, 0))}</div></div>
-        </div>
-      )}
+        </>}
+      </div>
       <div className="pill-filters">
         {["todos", "pendiente", "aprobada", "rechazada"].map(e => (
           <button key={e} className={`btn btn-sm ${filtro === e ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltro(e)}>
@@ -2030,6 +2036,48 @@ const WAView = ({ currentUser, setLeads }) => {
 
   const vendedorId = currentUser.id;
 
+  // ── Cargar mensajes guardados de Firestore al montar ──────
+  useEffect(() => {
+    const loadMessages = async () => {
+      try {
+        const fb = await loadFirebase();
+        // Sin orderBy para evitar necesitar índice compuesto
+        const snap = await fb.db.collection("wa_messages")
+          .where("vendedorId", "==", vendedorId)
+          .get();
+        const msgs = {};
+        snap.docs.forEach(d => {
+          const m = d.data();
+          if (!msgs[m.jid]) msgs[m.jid] = [];
+          msgs[m.jid].push(m);
+        });
+        // Ordenar por timestamp en el cliente
+        Object.keys(msgs).forEach(jid => {
+          msgs[jid].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        });
+        setMessages(msgs);
+      } catch (e) {
+        console.log("Mensajes WA:", e.message);
+      }
+    };
+    loadMessages();
+  }, [vendedorId]);
+
+  // ── Guardar mensaje en Firestore ──────────────────────────
+  const saveMessage = async (msg) => {
+    try {
+      const fb = await loadFirebase();
+      // Evitar duplicados por id
+      const snap = await fb.db.collection("wa_messages")
+        .where("id", "==", msg.id)
+        .where("vendedorId", "==", vendedorId)
+        .get();
+      if (snap.empty) {
+        await fb.db.collection("wa_messages").add({ ...msg, vendedorId });
+      }
+    } catch (e) { console.error("Error guardando mensaje:", e); }
+  };
+
   useEffect(() => {
     let sock = null;
     const connectSocket = async () => {
@@ -2044,20 +2092,23 @@ const WAView = ({ currentUser, setLeads }) => {
         sock = window.io(WA_SERVER_URL, { transports: ["websocket"], withCredentials: true });
         sock.on("connect", () => { sock.emit("wa:join", { vendedorId }); });
         sock.on("wa:status", ({ status: s, phone: p }) => {
-          // Si el servidor dice reconnecting pero nosotros nunca conectamos, mostrar disconnected
           setStatus(s === "reconnecting" ? "disconnected" : s);
           if (p) setPhone(p);
           if (s === "connected") setQrImg(null);
         });
         sock.on("wa:qr", ({ qr }) => { setQrImg(qr); setStatus("qr"); });
         sock.on("wa:message", (msg) => {
+          saveMessage(msg);
           setMessages(prev => {
             const existing = prev[msg.jid] || [];
+            // Evitar duplicados
+            if (existing.find(m => m.id === msg.id)) return prev;
             return { ...prev, [msg.jid]: [...existing, msg] };
           });
         });
         sock.on("wa:sent", ({ jid, text }) => {
-          const msg = { id: Date.now().toString(), from: "me", name: "Yo", text, timestamp: new Date().toISOString(), jid, fromMe: true };
+          const msg = { id: Date.now().toString(), from: "me", name: "Yo", text, timestamp: new Date().toISOString(), jid, fromMe: true, vendedorId };
+          saveMessage(msg);
           setMessages(prev => ({ ...prev, [jid]: [...(prev[jid] || []), msg] }));
         });
         sock.on("wa:error", ({ message: m }) => setError(m));
