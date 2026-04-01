@@ -1658,7 +1658,9 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
   const [editando, setEditando] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [filtro, setFiltro] = useState("todos");
-  const mine = currentUser.role === "admin" ? gastos : gastos.filter(g => g.vendedorId === currentUser.id);
+  const mine = currentUser.role === "admin"
+    ? gastos.filter(g => g.vendedorId === currentUser.id)  // admin solo ve sus propios gastos
+    : gastos.filter(g => g.vendedorId === currentUser.id);
   const cats = [...new Set(mine.map(g => g.categoria))];
   const filtered = filtro === "todos" ? mine : mine.filter(g => g.categoria === filtro);
   const totalUSD = mine.filter(g => g.moneda === "USD").reduce((s, g) => s + g.monto, 0);
@@ -1669,8 +1671,8 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
   return (
     <div>
       <div className="ph">
-        <div className="ph-title">{currentUser.role === "admin" ? "Gastos del Equipo" : "Mis Gastos"}</div>
-        {currentUser.role === "vendedor" && <button className="btn btn-primary" onClick={() => setModal(true)}>+ Cargar Gasto</button>}
+        <div className="ph-title">Mis Gastos</div>
+        <button className="btn btn-primary" onClick={() => setModal(true)}>+ Cargar Gasto</button>
       </div>
       <div className="stats-row" style={{ marginBottom: 20 }}>
         <div className="stat c-red"><div className="stat-label">Total USD</div><div className="stat-val">{formatUSD(totalUSD)}</div></div>
@@ -1692,7 +1694,7 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
               <div>
                 <span className="badge b-verde" style={{ marginBottom: 4, display: "inline-block" }}>{g.categoria}</span>
                 <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>{g.descripcion}</div>
-                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>{g.fecha}{currentUser.role === "admin" && ` · ${g.vendedorNombre}`}</div>
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>{g.fecha}</div>
               </div>
               <div style={{ fontWeight: 700, fontSize: 16, color: g.moneda === "USD" ? "var(--verde-claro)" : "var(--text)", flexShrink: 0, marginLeft: 10 }}>
                 {g.moneda === "USD" ? formatUSD(g.monto) : formatARS(g.monto)}
@@ -1718,16 +1720,14 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
           <table>
             <thead><tr>
               <th>Fecha</th>
-              {currentUser.role === "admin" && <th>Vendedor</th>}
               <th>Categoría</th><th>Descripción</th><th>Monto</th><th>Comprobante</th><th>IA</th><th>Acciones</th>
             </tr></thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8}><div className="empty"><div className="empty-icon">💸</div><p>Sin gastos registrados</p></div></td></tr>
+                <tr><td colSpan={7}><div className="empty"><div className="empty-icon">💸</div><p>Sin gastos registrados</p></div></td></tr>
               ) : filtered.map(g => (
                 <tr key={g.id}>
                   <td>{g.fecha}</td>
-                  {currentUser.role === "admin" && <td style={{ fontSize: 12 }}>{g.vendedorNombre}</td>}
                   <td><span className="badge b-verde">{g.categoria}</span></td>
                   <td style={{ fontSize: 13 }}>{g.descripcion}</td>
                   <td style={{ fontWeight: 700, color: g.moneda === "USD" ? "var(--verde-claro)" : "var(--text)" }}>{g.moneda === "USD" ? formatUSD(g.monto) : formatARS(g.monto)}</td>
