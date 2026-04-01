@@ -976,6 +976,7 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
   const [f, sf] = useState(() => {
     if (ventaEdit) {
       return {
+        fecha: ventaEdit.fecha || today(),
         proyecto: ventaEdit.proyecto || "", zona: ventaEdit.zona || "",
         cNombre: ventaEdit.cliente?.nombre || "", cDni: ventaEdit.cliente?.dni || "",
         cTel: ventaEdit.cliente?.telefono || "", cEmail: ventaEdit.cliente?.email || "",
@@ -987,7 +988,7 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
         notas: ventaEdit.notas || "", compNombre: ventaEdit.comprobante || "",
       };
     }
-    return { proyecto: "", zona: "", cNombre: "", cDni: "", cTel: "", cEmail: "", cDir: "", cOcup: "", reserva: "", total: "", financiado: false, cuotas: "", cuotaVal: "", anticipo: "", comisionCompartida: false, notas: "", compNombre: "" };
+    return { fecha: today(), proyecto: "", zona: "", cNombre: "", cDni: "", cTel: "", cEmail: "", cDir: "", cOcup: "", reserva: "", total: "", financiado: false, cuotas: "", cuotaVal: "", anticipo: "", comisionCompartida: false, notas: "", compNombre: "" };
   });
   const [errs, setErrs] = useState({});
   const [saving, setSaving] = useState(false);
@@ -998,7 +999,7 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
   const comisionVendedor = f.comisionCompartida ? comisionTotal / 2 : comisionTotal;
 
   const validate = () => {
-    const req = ["proyecto", "cNombre", "cDni", "cTel", "cEmail", "reserva", "total"];
+    const req = ["proyecto", "cNombre", "cDni", "cTel", "cEmail", "reserva", "total", "fecha"];
     const e = {};
     req.forEach(k => { if (!f[k]) e[k] = true; });
     if (f.financiado && !f.cuotas) e.cuotas = true;
@@ -1013,7 +1014,7 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
     await new Promise(r => setTimeout(r, 600));
     // Usar el vendedor seleccionado (sea admin eligiendo o vendedor propio)
     const vend = vendedorSel || vendedor;
-    const base = { id: ventaEdit ? ventaEdit.id : uid(), vendedorId: vend.id, vendedorNombre: vend.name, fecha: ventaEdit ? ventaEdit.fecha : today(), cliente: { nombre: f.cNombre, dni: f.cDni, telefono: f.cTel, email: f.cEmail, direccion: f.cDir, ocupacion: f.cOcup }, montoReserva: parseFloat(f.reserva), montoTotal: parseFloat(f.total), financiado: f.financiado, cuotas: f.financiado ? parseInt(f.cuotas) : null, valorCuota: f.financiado ? parseFloat(f.cuotaVal) : null, anticipo: f.financiado ? parseFloat(f.anticipo) || null : null, comision: comisionVendedor, comisionTotal: comisionTotal, comisionCompartida: f.comisionCompartida, estado: ventaEdit ? ventaEdit.estado : "pendiente", proyecto: f.proyecto, zona: f.zona, notas: f.notas, comprobante: f.compNombre };
+    const base = { id: ventaEdit ? ventaEdit.id : uid(), vendedorId: vend.id, vendedorNombre: vend.name, fecha: f.fecha || today(), cliente: { nombre: f.cNombre, dni: f.cDni, telefono: f.cTel, email: f.cEmail, direccion: f.cDir, ocupacion: f.cOcup }, montoReserva: parseFloat(f.reserva), montoTotal: parseFloat(f.total), financiado: f.financiado, cuotas: f.financiado ? parseInt(f.cuotas) : null, valorCuota: f.financiado ? parseFloat(f.cuotaVal) : null, anticipo: f.financiado ? parseFloat(f.anticipo) || null : null, comision: comisionVendedor, comisionTotal: comisionTotal, comisionCompartida: f.comisionCompartida, estado: ventaEdit ? ventaEdit.estado : "pendiente", proyecto: f.proyecto, zona: f.zona, notas: f.notas, comprobante: f.compNombre };
     onSave(base);
     setSaving(false); onClose();
   };
@@ -1050,6 +1051,17 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
           <div className="fg">
             <div className="form-group"><label className="form-label">Proyecto / Desarrollo *</label><input className={`form-input ${errs.proyecto ? "err" : ""}`} placeholder="Torres del Sur I" value={f.proyecto} onChange={e => set("proyecto", e.target.value)} /></div>
             <div className="form-group"><label className="form-label">Zona</label><select className="form-select" value={f.zona} onChange={e => set("zona", e.target.value)}><option value="">Sin especificar</option><option>Zona Sur</option><option>Zona Norte</option><option>Zona Oeste</option></select></div>
+            <div className="form-group">
+              <label className="form-label">📅 Fecha de la Venta *</label>
+              <input
+                className={`form-input ${errs.fecha ? "err" : ""}`}
+                type="date"
+                value={f.fecha}
+                max={today()}
+                onChange={e => set("fecha", e.target.value)}
+                style={{ colorScheme: "dark" }}
+              />
+            </div>
           </div>
 
           <div className="section-sep">Datos del Cliente</div>
