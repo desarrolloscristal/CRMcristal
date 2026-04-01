@@ -1188,8 +1188,12 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
 // ============================================================
 // MODAL NUEVO GASTO
 // ============================================================
-const ModalGasto = ({ onClose, onSave, vendedor, apiKey }) => {
-  const [f, sf] = useState({ categoria: "", descripcion: "", monto: "", moneda: "USD", fecha: today(), compNombre: "", aiData: null });
+const ModalGasto = ({ onClose, onSave, vendedor, apiKey, gastoEdit }) => {
+  const [f, sf] = useState(() => gastoEdit ? {
+    categoria: gastoEdit.categoria || "", descripcion: gastoEdit.descripcion || "",
+    monto: gastoEdit.monto?.toString() || "", moneda: gastoEdit.moneda || "USD",
+    fecha: gastoEdit.fecha || today(), compNombre: gastoEdit.comprobante || "", aiData: gastoEdit.aiInterpretacion || null
+  } : { categoria: "", descripcion: "", monto: "", moneda: "USD", fecha: today(), compNombre: "", aiData: null });
   const [aiLoading, setAiLoading] = useState(false);
   const [errs, setErrs] = useState({});
   const set = (k, v) => sf(p => ({ ...p, [k]: v }));
@@ -1221,7 +1225,7 @@ const ModalGasto = ({ onClose, onSave, vendedor, apiKey }) => {
     if (!f.monto) e.monto = true;
     setErrs(e);
     if (Object.keys(e).length > 0) return;
-    onSave({ id: uid(), vendedorId: vendedor.id, vendedorNombre: vendedor.name, fecha: f.fecha, categoria: f.categoria, descripcion: f.descripcion, monto: parseFloat(f.monto), moneda: f.moneda, comprobante: f.compNombre, aiInterpretacion: f.aiData });
+    onSave({ id: gastoEdit ? gastoEdit.id : uid(), vendedorId: gastoEdit ? gastoEdit.vendedorId : vendedor.id, vendedorNombre: gastoEdit ? gastoEdit.vendedorNombre : vendedor.name, fecha: f.fecha, categoria: f.categoria, descripcion: f.descripcion, monto: parseFloat(f.monto), moneda: f.moneda, comprobante: f.compNombre, aiInterpretacion: f.aiData });
     onClose();
   };
 
@@ -1229,7 +1233,7 @@ const ModalGasto = ({ onClose, onSave, vendedor, apiKey }) => {
     <div className="overlay">
       <div className="modal">
         <div className="modal-head">
-          <div className="modal-title">🚗 Cargar Gasto</div>
+          <div className="modal-title">{gastoEdit ? "✏️ Editar Gasto" : "🚗 Cargar Gasto"}</div>
           <div className="modal-close" onClick={onClose}>✕</div>
         </div>
         <div className="modal-body">
@@ -1597,12 +1601,17 @@ const VentasView = ({ ventas, setVentas, currentUser, users = [] }) => {
 // ============================================================
 const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
   const [modal, setModal] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [filtro, setFiltro] = useState("todos");
   const mine = currentUser.role === "admin" ? gastos : gastos.filter(g => g.vendedorId === currentUser.id);
   const cats = [...new Set(mine.map(g => g.categoria))];
   const filtered = filtro === "todos" ? mine : mine.filter(g => g.categoria === filtro);
   const totalUSD = mine.filter(g => g.moneda === "USD").reduce((s, g) => s + g.monto, 0);
   const totalARS = mine.filter(g => g.moneda === "ARS").reduce((s, g) => s + g.monto, 0);
+  const canEdit = (g) => currentUser.role === "admin" || g.vendedorId === currentUser.id;
+  const deleteGasto = (id) => { setGastos(prev => prev.filter(g => g.id !== id)); setConfirmDelete(null); };
+
   return (
     <div>
       <div className="ph">
@@ -1635,9 +1644,15 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
                 {g.moneda === "USD" ? formatUSD(g.monto) : formatARS(g.monto)}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               {g.comprobante && <span className="badge b-cyan">📎 Comprobante</span>}
               {g.aiInterpretacion && <span className="badge b-verde">🤖 IA</span>}
+              {canEdit(g) && (
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                  <button className="btn btn-sm btn-ghost" onClick={() => setEditando(g)}>✏️ Editar</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => setConfirmDelete(g.id)}>🗑</button>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -1650,11 +1665,11 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
             <thead><tr>
               <th>Fecha</th>
               {currentUser.role === "admin" && <th>Vendedor</th>}
-              <th>Categoría</th><th>Descripción</th><th>Monto</th><th>Comprobante</th><th>IA</th>
+              <th>Categoría</th><th>Descripción</th><th>Monto</th><th>Comprobante</th><th>IA</th><th>Acciones</th>
             </tr></thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={7}><div className="empty"><div className="empty-icon">💸</div><p>Sin gastos registrados</p></div></td></tr>
+                <tr><td colSpan={8}><div className="empty"><div className="empty-icon">💸</div><p>Sin gastos registrados</p></div></td></tr>
               ) : filtered.map(g => (
                 <tr key={g.id}>
                   <td>{g.fecha}</td>
@@ -1664,13 +1679,39 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
                   <td style={{ fontWeight: 700, color: g.moneda === "USD" ? "var(--verde-claro)" : "var(--text)" }}>{g.moneda === "USD" ? formatUSD(g.monto) : formatARS(g.monto)}</td>
                   <td>{g.comprobante ? <span className="badge b-cyan">📎 Sí</span> : <span className="badge b-dark">—</span>}</td>
                   <td>{g.aiInterpretacion ? <span className="badge b-verde">🤖 Sí</span> : <span className="badge b-dark">—</span>}</td>
+                  <td>
+                    {canEdit(g) && (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className="btn btn-sm btn-ghost" onClick={() => setEditando(g)}>✏️</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => setConfirmDelete(g.id)}>🗑</button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Confirmar borrar */}
+      {confirmDelete && (
+        <div className="overlay">
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-head"><span className="modal-title">🗑 Eliminar gasto</span></div>
+            <div className="modal-body" style={{ textAlign: "center" }}>
+              <p style={{ color: "var(--text2)", marginBottom: 20 }}>¿Estás seguro? Esta acción no se puede deshacer.</p>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>Cancelar</button>
+                <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => deleteGasto(confirmDelete)}>Sí, eliminar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modal && <ModalGasto onClose={() => setModal(false)} onSave={g => setGastos(p => [g, ...p])} vendedor={currentUser} apiKey={apiKey} />}
+      {editando && <ModalGasto onClose={() => setEditando(null)} onSave={g => { setGastos(p => p.map(x => x.id === g.id ? g : x)); setEditando(null); }} vendedor={currentUser} apiKey={apiKey} gastoEdit={editando} />}
     </div>
   );
 };
