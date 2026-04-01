@@ -1468,38 +1468,81 @@ const VentasView = ({ ventas, setVentas, currentUser, users = [] }) => {
   const [modal, setModal] = useState(false);
   const [detalle, setDetalle] = useState(null);
   const [editando, setEditando] = useState(null);
-  const [filtro, setFiltro] = useState("todos");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroMes, setFiltroMes] = useState("todos");
   const [confirmDelete, setConfirmDelete] = useState(null);
+
   const myVentas = currentUser.role === "admin" ? ventas : ventas.filter(v => v.vendedorId === currentUser.id);
-  const filtered = filtro === "todos" ? myVentas : myVentas.filter(v => v.estado === filtro);
-  const totalComision = myVentas.reduce((s, v) => s + v.comision, 0);
+
+  // Generar lista de meses disponibles desde las ventas
+  const mesesDisponibles = [...new Set(myVentas.map(v => v.fecha?.slice(0, 7)).filter(Boolean))].sort().reverse();
+
+  // Aplicar filtros
+  const filtered = myVentas
+    .filter(v => filtroEstado === "todos" || v.estado === filtroEstado)
+    .filter(v => filtroMes === "todos" || v.fecha?.startsWith(filtroMes))
+    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+
+  const totalComision = filtered.reduce((s, v) => s + (v.comision || 0), 0);
+  const totalVendido = filtered.reduce((s, v) => s + (v.montoTotal || 0), 0);
   const updateEstado = (id, estado) => setVentas(prev => prev.map(v => v.id === id ? { ...v, estado } : v));
   const deleteVenta = (id) => { setVentas(prev => prev.filter(v => v.id !== id)); setConfirmDelete(null); };
   const canEdit = (v) => currentUser.role === "admin" || (v.vendedorId === currentUser.id && v.estado === "pendiente");
+
+  // Formatear mes para mostrar: "2026-03" → "Mar 2026"
+  const formatMes = (ym) => {
+    if (!ym) return "";
+    const [y, m] = ym.split("-");
+    const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    return `${meses[parseInt(m)-1]} ${y}`;
+  };
+
   return (
     <div>
       <div className="ph">
         <div className="ph-title">{currentUser.role === "admin" ? "Gestión de Ventas" : "Mis Ventas"}</div>
         <button className="btn btn-primary" onClick={() => setModal(true)}>+ Cargar Venta</button>
       </div>
-      <div className="stats-row" style={{ marginBottom: 20 }}>
+
+      {/* Stats — se actualizan según el filtro activo */}
+      <div className="stats-row" style={{ marginBottom: 16 }}>
         {currentUser.role === "admin" ? <>
-          <div className="stat c-cyan"><div className="stat-label">Total Comisiones</div><div className="stat-val">{formatUSD(myVentas.reduce((s,v) => s + (v.comision||0), 0))}</div></div>
-          <div className="stat c-verde"><div className="stat-label">Aprobadas</div><div className="stat-val">{myVentas.filter(v => v.estado === "aprobada").length}</div></div>
-          <div className="stat c-yellow"><div className="stat-label">Pendientes</div><div className="stat-val">{myVentas.filter(v => v.estado === "pendiente").length}</div></div>
-          <div className="stat c-silver"><div className="stat-label">Total Vendido</div><div className="stat-val">{formatUSD(myVentas.reduce((s,v) => s + (v.montoTotal||0), 0))}</div></div>
+          <div className="stat c-cyan"><div className="stat-label">Total Comisiones{filtroMes !== "todos" ? ` · ${formatMes(filtroMes)}` : ""}</div><div className="stat-val">{formatUSD(totalComision)}</div></div>
+          <div className="stat c-verde"><div className="stat-label">Aprobadas</div><div className="stat-val">{filtered.filter(v => v.estado === "aprobada").length}</div></div>
+          <div className="stat c-yellow"><div className="stat-label">Pendientes</div><div className="stat-val">{filtered.filter(v => v.estado === "pendiente").length}</div></div>
+          <div className="stat c-silver"><div className="stat-label">Total Vendido{filtroMes !== "todos" ? ` · ${formatMes(filtroMes)}` : ""}</div><div className="stat-val">{formatUSD(totalVendido)}</div></div>
         </> : <>
-          <div className="stat c-cyan"><div className="stat-label">Mis Comisiones</div><div className="stat-val">{formatUSD(totalComision)}</div></div>
-          <div className="stat c-verde"><div className="stat-label">Aprobadas</div><div className="stat-val">{myVentas.filter(v => v.estado === "aprobada").length}</div></div>
-          <div className="stat c-silver"><div className="stat-label">Total Vendido</div><div className="stat-val">{formatUSD(myVentas.reduce((s, v) => s + v.montoTotal, 0))}</div></div>
+          <div className="stat c-cyan"><div className="stat-label">Mis Comisiones{filtroMes !== "todos" ? ` · ${formatMes(filtroMes)}` : ""}</div><div className="stat-val">{formatUSD(totalComision)}</div></div>
+          <div className="stat c-verde"><div className="stat-label">Aprobadas</div><div className="stat-val">{filtered.filter(v => v.estado === "aprobada").length}</div></div>
+          <div className="stat c-silver"><div className="stat-label">Total Vendido</div><div className="stat-val">{formatUSD(totalVendido)}</div></div>
         </>}
       </div>
-      <div className="pill-filters">
-        {["todos", "pendiente", "aprobada", "rechazada"].map(e => (
-          <button key={e} className={`btn btn-sm ${filtro === e ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltro(e)}>
-            {e.charAt(0).toUpperCase() + e.slice(1)}
-          </button>
-        ))}
+
+      {/* Filtros: Estado + Mes */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
+        {/* Filtro por estado */}
+        <div className="pill-filters" style={{ marginBottom: 0 }}>
+          {["todos", "pendiente", "aprobada", "rechazada"].map(e => (
+            <button key={e} className={`btn btn-sm ${filtroEstado === e ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltroEstado(e)}>
+              {e.charAt(0).toUpperCase() + e.slice(1)}
+            </button>
+          ))}
+        </div>
+        {/* Filtro por mes */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          <span style={{ fontSize: 12, color: "var(--text3)", fontWeight: 600 }}>📅 Mes:</span>
+          <select
+            className="form-select"
+            style={{ fontSize: 13, padding: "6px 10px", minWidth: 130 }}
+            value={filtroMes}
+            onChange={e => setFiltroMes(e.target.value)}
+          >
+            <option value="todos">Todos</option>
+            {mesesDisponibles.map(m => (
+              <option key={m} value={m}>{formatMes(m)}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Mobile: cards en lugar de tabla */}
