@@ -1057,7 +1057,18 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
 
           <div className="section-sep">Proyecto</div>
           <div className="fg">
-            <div className="form-group"><label className="form-label">Proyecto / Desarrollo *</label><input className={`form-input ${errs.proyecto ? "err" : ""}`} placeholder="Torres del Sur I" value={f.proyecto} onChange={e => set("proyecto", e.target.value)} /></div>
+            <div className="form-group">
+              <label className="form-label">Proyecto / Desarrollo *</label>
+              <select className={`form-select ${errs.proyecto ? "err" : ""}`} value={f.proyecto} onChange={e => set("proyecto", e.target.value)}>
+                <option value="">Seleccionar proyecto...</option>
+                <option>Arroyos de San Vicente</option>
+                <option>El Viejo Ombú</option>
+                <option>Las Perdices 1</option>
+                <option>Las Perdices 2</option>
+                <option>El Candil Joven</option>
+                <option>Club de Campo el Candil</option>
+              </select>
+            </div>
             <div className="form-group"><label className="form-label">Zona</label><select className="form-select" value={f.zona} onChange={e => set("zona", e.target.value)}><option value="">Sin especificar</option><option>Zona Sur</option><option>Zona Norte</option><option>Zona Oeste</option></select></div>
             <div className="form-group">
               <label className="form-label">📅 Fecha de la Venta *</label>
