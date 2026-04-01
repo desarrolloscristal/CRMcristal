@@ -999,11 +999,19 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
   const comisionVendedor = f.comisionCompartida ? comisionTotal / 2 : comisionTotal;
 
   const validate = () => {
-    const req = ["proyecto", "cNombre", "cDni", "cTel", "cEmail", "reserva", "total", "fecha"];
     const e = {};
-    req.forEach(k => { if (!f[k]) e[k] = true; });
-    if (f.financiado && !f.cuotas) e.cuotas = true;
-    if (f.financiado && !f.cuotaVal) e.cuotaVal = true;
+    // Admin: solo proyecto y nombre cliente obligatorios
+    if (vendedor.role === "admin") {
+      if (!f.proyecto) e.proyecto = true;
+      if (!f.cNombre) e.cNombre = true;
+      if (!f.fecha) e.fecha = true;
+    } else {
+      // Vendedor: todos los campos obligatorios
+      const req = ["proyecto", "cNombre", "cDni", "cTel", "cEmail", "reserva", "total", "fecha"];
+      req.forEach(k => { if (!f[k]) e[k] = true; });
+      if (f.financiado && !f.cuotas) e.cuotas = true;
+      if (f.financiado && !f.cuotaVal) e.cuotaVal = true;
+    }
     setErrs(e);
     return Object.keys(e).length === 0;
   };
@@ -1067,9 +1075,9 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
           <div className="section-sep">Datos del Cliente</div>
           <div className="fg">
             <div className="form-group"><label className="form-label">Nombre Completo *</label><input className={`form-input ${errs.cNombre ? "err" : ""}`} placeholder="Juan Pérez" value={f.cNombre} onChange={e => set("cNombre", e.target.value)} /></div>
-            <div className="form-group"><label className="form-label">DNI *</label><input className={`form-input ${errs.cDni ? "err" : ""}`} placeholder="30.123.456" value={f.cDni} onChange={e => set("cDni", e.target.value)} /></div>
-            <div className="form-group"><label className="form-label">Teléfono *</label><input className={`form-input ${errs.cTel ? "err" : ""}`} placeholder="11-4567-8901" value={f.cTel} onChange={e => set("cTel", e.target.value)} /></div>
-            <div className="form-group"><label className="form-label">Email *</label><input className={`form-input ${errs.cEmail ? "err" : ""}`} type="email" placeholder="cliente@mail.com" value={f.cEmail} onChange={e => set("cEmail", e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">DNI {vendedor.role !== "admin" && "*"}</label><input className={`form-input ${errs.cDni ? "err" : ""}`} placeholder="30.123.456" value={f.cDni} onChange={e => set("cDni", e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">Teléfono {vendedor.role !== "admin" && "*"}</label><input className={`form-input ${errs.cTel ? "err" : ""}`} placeholder="11-4567-8901" value={f.cTel} onChange={e => set("cTel", e.target.value)} /></div>
+            <div className="form-group"><label className="form-label">Email {vendedor.role !== "admin" && "*"}</label><input className={`form-input ${errs.cEmail ? "err" : ""}`} type="email" placeholder="cliente@mail.com" value={f.cEmail} onChange={e => set("cEmail", e.target.value)} /></div>
             <div className="form-group"><label className="form-label">Dirección</label><input className="form-input" placeholder="Av. Corrientes 1234, CABA" value={f.cDir} onChange={e => set("cDir", e.target.value)} /></div>
             <div className="form-group"><label className="form-label">Ocupación</label><input className="form-input" placeholder="Comerciante, Empleado..." value={f.cOcup} onChange={e => set("cOcup", e.target.value)} /></div>
           </div>
@@ -1077,11 +1085,11 @@ const ModalVenta = ({ onClose, onSave, vendedor, ventaEdit, users = [] }) => {
           <div className="section-sep">Datos de la Venta</div>
           <div className="fg">
             <div className="form-group">
-              <label className="form-label">Monto de Reserva (USD) *</label>
+              <label className="form-label">Monto de Reserva (USD) {vendedor.role !== "admin" && "*"}</label>
               <div className="pfx-wrap"><span className="pfx">USD</span><input className={`form-input ${errs.reserva ? "err" : ""}`} type="number" placeholder="5.000" value={f.reserva} onChange={e => set("reserva", e.target.value)} /></div>
             </div>
             <div className="form-group">
-              <label className="form-label">Monto Total de Venta (USD) *</label>
+              <label className="form-label">Monto Total de Venta (USD) {vendedor.role !== "admin" && "*"}</label>
               <div className="pfx-wrap"><span className="pfx">USD</span><input className={`form-input ${errs.total ? "err" : ""}`} type="number" placeholder="120.000" value={f.total} onChange={e => set("total", e.target.value)} /></div>
             </div>
           </div>
