@@ -1657,31 +1657,58 @@ const GastosView = ({ gastos, setGastos, currentUser, apiKey }) => {
   const [modal, setModal] = useState(false);
   const [editando, setEditando] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [filtro, setFiltro] = useState("todos");
-  const mine = currentUser.role === "admin"
-    ? gastos.filter(g => g.vendedorId === currentUser.id)  // admin solo ve sus propios gastos
-    : gastos.filter(g => g.vendedorId === currentUser.id);
+  const [filtroCategoria, setFiltroCategoria] = useState("todos");
+  const [filtroMes, setFiltroMes] = useState("todos");
+
+  const mine = gastos.filter(g => g.vendedorId === currentUser.id);
   const cats = [...new Set(mine.map(g => g.categoria))];
-  const filtered = filtro === "todos" ? mine : mine.filter(g => g.categoria === filtro);
-  const totalUSD = mine.filter(g => g.moneda === "USD").reduce((s, g) => s + g.monto, 0);
-  const totalARS = mine.filter(g => g.moneda === "ARS").reduce((s, g) => s + g.monto, 0);
+
+  // Meses disponibles
+  const mesesDisponibles = [...new Set(mine.map(g => g.fecha?.slice(0,7)).filter(Boolean))].sort().reverse();
+  const formatMes = (ym) => {
+    if (!ym) return "";
+    const [y, m] = ym.split("-");
+    const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    return `${meses[parseInt(m)-1]} ${y}`;
+  };
+
+  const filtered = mine
+    .filter(g => filtroCategoria === "todos" || g.categoria === filtroCategoria)
+    .filter(g => filtroMes === "todos" || g.fecha?.startsWith(filtroMes))
+    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+
+  const totalUSD = filtered.filter(g => g.moneda === "USD").reduce((s, g) => s + g.monto, 0);
+  const totalARS = filtered.filter(g => g.moneda === "ARS").reduce((s, g) => s + g.monto, 0);
   const canEdit = (g) => currentUser.role === "admin" || g.vendedorId === currentUser.id;
   const deleteGasto = (id) => { setGastos(prev => prev.filter(g => g.id !== id)); setConfirmDelete(null); };
+
+  const titulo = currentUser.role === "admin" ? "Gastos Administrativos" : "Mis Gastos";
 
   return (
     <div>
       <div className="ph">
-        <div className="ph-title">Mis Gastos</div>
+        <div className="ph-title">{titulo}</div>
         <button className="btn btn-primary" onClick={() => setModal(true)}>+ Cargar Gasto</button>
       </div>
-      <div className="stats-row" style={{ marginBottom: 20 }}>
-        <div className="stat c-red"><div className="stat-label">Total USD</div><div className="stat-val">{formatUSD(totalUSD)}</div></div>
-        <div className="stat c-yellow"><div className="stat-label">Total ARS</div><div className="stat-val">{formatARS(totalARS)}</div></div>
-        <div className="stat c-silver"><div className="stat-label">Registros</div><div className="stat-val">{mine.length}</div></div>
+      <div className="stats-row" style={{ marginBottom: 16 }}>
+        <div className="stat c-red"><div className="stat-label">Total USD{filtroMes !== "todos" ? ` · ${formatMes(filtroMes)}` : ""}</div><div className="stat-val">{formatUSD(totalUSD)}</div></div>
+        <div className="stat c-yellow"><div className="stat-label">Total ARS{filtroMes !== "todos" ? ` · ${formatMes(filtroMes)}` : ""}</div><div className="stat-val">{formatARS(totalARS)}</div></div>
+        <div className="stat c-silver"><div className="stat-label">Registros</div><div className="stat-val">{filtered.length}</div></div>
       </div>
-      <div className="pill-filters">
-        <button className={`btn btn-sm ${filtro === "todos" ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltro("todos")}>Todos</button>
-        {cats.map(c => <button key={c} className={`btn btn-sm ${filtro === c ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltro(c)}>{c}</button>)}
+
+      {/* Filtros: Categoría + Mes */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
+        <div className="pill-filters" style={{ marginBottom: 0 }}>
+          <button className={`btn btn-sm ${filtroCategoria === "todos" ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltroCategoria("todos")}>Todos</button>
+          {cats.map(c => <button key={c} className={`btn btn-sm ${filtroCategoria === c ? "btn-primary" : "btn-ghost"}`} onClick={() => setFiltroCategoria(c)}>{c}</button>)}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+          <span style={{ fontSize: 12, color: "var(--text3)", fontWeight: 600 }}>📅 Mes:</span>
+          <select className="form-select" style={{ fontSize: 13, padding: "6px 10px", minWidth: 130 }} value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
+            <option value="todos">Todos</option>
+            {mesesDisponibles.map(m => <option key={m} value={m}>{formatMes(m)}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Mobile: cards */}
